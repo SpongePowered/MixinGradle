@@ -1,0 +1,47 @@
+buildscript {
+    repositories {
+        maven {
+            url "https://plugins.gradle.org/m2/"
+        }
+    }
+    dependencies {
+        classpath "com.gradle.publish:plugin-publish-plugin:0.9.1"
+    }
+}
+
+apply plugin: 'groovy'
+apply plugin: 'maven'
+apply plugin: 'eclipse'
+apply plugin: "com.gradle.plugin-publish"
+
+group = 'org.spongepowered'
+version = '0.1-SNAPSHOT'
+archivesBaseName = 'mixingradle'
+targetCompatibility = '1.6'
+sourceCompatibility = '1.6'
+
+dependencies {
+    compile gradleApi()
+}
+
+jar.manifest.mainAttributes (
+    "Implementation-Title": name,
+    "Implementation-Version": version
+)
+
+artifacts {
+    archives jar
+}
+
+pluginBundle {
+    website = 'http://www.gradle.org/'
+    vcsUrl = 'https://github.com/SpongePowered/MixinGradle'
+    description = 'Gradle plugin for SpongePowered Mixin'
+    tags = ['spongepowered', 'sponge', 'mixin']
+    plugins {
+        patcher {
+            id = 'org.spongepowered.mixin'
+            displayName = 'SpongePowered Mixin Gradle Plugin'
+        }
+    }
+}
