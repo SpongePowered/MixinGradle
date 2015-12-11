@@ -22,54 +22,72 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
  * THE SOFTWARE.
  */
-package org.spongepowered.asm.gradle.plugins;
+package org.spongepowered.asm.gradle.plugins
 
-import java.util.Map.Entry
-import org.eclipse.jdt.core.dom.ThisExpression;
+import static org.spongepowered.asm.gradle.plugins.ReobfMappingType.*
+
+import groovy.transform.PackageScope
+import org.gradle.api.InvalidUserDataException
 import org.gradle.api.Project
-import org.gradle.api.Task
 import org.gradle.api.tasks.SourceSet
 import org.gradle.api.tasks.compile.JavaCompile
+
+import java.util.Map.Entry
 
 public class MixinExtension {
     
     private final Project project
     
+    private boolean applyDefault = true
+    
+    private Set<SourceSet> sourceSets = []
+    private Map<String, String> refMaps = [:]
     private Map<String, String> tokens = [:]
-    private boolean disableTargetValidator
-    private boolean disableTargetExport
+    
+    boolean disableRefMapWarning
+    boolean disableTargetValidator
+    boolean disableTargetExport
+    Object defaultObfuscationEnv
     
     MixinExtension(Project project) {
         this.project = project
     }
     
-    boolean isDisableTargetValidator() {
-        this.disableTargetValidator
-    }
-    
-    void setDisableTargetValidator(boolean disable) {
-        this.disableTargetValidator = disable
+    void disableRefMapWarning() {
+        this.disableRefMapWarning = true
     }
     
     void disableTargetValidator() {
         this.disableTargetValidator = true
     }
     
-    boolean isDisableTargetExport() {
-        this.disableTargetExport
-    }
-    
-    void setDisableTargetExport(boolean disable) {
-        this.disableTargetExport = disable
-    }
-    
     void disableTargetExport() {
         this.disableTargetExport = true
     }
     
+    String getNotch() {
+        NOTCH
+    }
+    
+    String getSearge() {
+        SEARGE
+    }
+    
+    String getSrg() {
+        SEARGE
+    }
+    
+    void token(Object name) {
+        token(name, "true")
+    }
+    
+    void token(Object name, Object value) {
+        this.tokens.put(name.toString().trim(), value.toString().trim())
+    }
+    
     MixinExtension tokens(Map<String, ?> map) {
-        for (Entry<String, ?> entry : map) { // not a closure because tokens is private
-            tokens.put(entry.key.trim(), entry.value.toString().trim())
+        for (Entry<String, ?> entry : map) {
+            this.tokens.put(entry.key.trim(), entry.value.toString().trim())
         }
     }
     
@@ -77,7 +95,7 @@ public class MixinExtension {
         Collections.unmodifiableMap(this.tokens)
     }
     
-    String getTokenArgument() {
+    @PackageScope String getTokenArgument() {
         def arg = '-Atokens='
         def first = true
         for (Entry<String, String> token : this.tokens) {
@@ -88,59 +106,124 @@ public class MixinExtension {
         arg
     }
     
-    void add(String set, String refMapName) {
-        this.add(project.sourceSets[set], refMapName)
+    @PackageScope void applyDefault() {
+        if (this.applyDefault) {
+            this.applyDefault = false
+            project.logger.info "No sourceSets added for mixin processing, applying defaults"
+            this.disableRefMapWarning = true
+            project.sourceSets.each { set -> 
+                this.add(set, "mixin.refmap.json")
+            }
+        }
+    }
+    
+    void add(String set) {
+        this.add(project.sourceSets[set])
+    }
+    
+    void add(SourceSet set) {
+        try {
+            set.getRefMap()
+        } catch (e) {
+            throw new InvalidUserDataException(sprintf('No \'refMap\' defined on %s', set))
+        }
+        
+        this.add(set, set.refMap.toString())
+    }
+    
+    void add(String set, Object refMapName) {
+        this.add(project.sourceSets[set], refMapName.toString())
+    }
+    
+    void add(SourceSet set, Object refMapName) {
+        this.add(set, refMapName.toString())
     }
     
     void add(SourceSet set, String refMapName) {
+        if (this.sourceSets.contains(set)) {
+            project.logger.info "Not adding {} to mixin processor, sourceSet already added", set
+            return
+        }
+
+        project.logger.info "Adding {} to mixin processor", set
+        
         def compileTask = project.tasks[set.compileJavaTaskName]
-        def outSrgFile = project.file("${compileTask.temporaryDir}/mcp-srg.srg")
-        def outNotchFile = project.file("${compileTask.temporaryDir}/mcp-notch.srg")
-        def refMapFile = project.file("${compileTask.temporaryDir}/${compileTask.name}-refmap-srg.json")
-        def notchRefMapFile = project.file("${compileTask.temporaryDir}/${compileTask.name}-refmap-notch.json")
-        
-        compileTask.ext.outSrgFile = outSrgFile
-        compileTask.ext.outNotchFile = outNotchFile
-        set.ext.refMapName = refMapName
-        set.ext.srgRefMap = refMapFile
-        set.ext.notchRefMap = notchRefMapFile
-        
-        compileTask.doFirst {
-            if (compileTask instanceof JavaCompile) {
-                this.applyCompilerArgs(compileTask, refMapFile, notchRefMapFile);
-            }
+        if (!(compileTask instanceof JavaCompile)) {
+            throw new InvalidUserDataException(sprintf('Cannot add non-java %s to mixin processor', set))
         }
         
+        this.applyDefault = false
+            
+        def refMaps = this.refMaps
+        def refMapFile = project.file("${compileTask.temporaryDir}/${compileTask.name}-refmap.json")
+        def srgFiles = [
+            (ReobfMappingType.SEARGE): project.file("${compileTask.temporaryDir}/mcp-srg.srg"),
+            (ReobfMappingType.NOTCH): project.file("${compileTask.temporaryDir}/mcp-notch.srg")
+        ]
+        
+        compileTask.ext.outSrgFile = srgFiles[SEARGE]
+        compileTask.ext.outNotchFile = srgFiles[NOTCH]
+        compileTask.ext.refMap = refMapName
+        compileTask.ext.refMapFile = refMapFile
+        set.ext.refMap = refMapName
+        set.ext.refMapFile = refMapFile
+        
+        compileTask.doFirst {
+            if (!this.disableRefMapWarning && refMaps[refMapName]) {
+                project.logger.warn "Potential refmap conflict. Duplicate refmap name {} specified for sourceSet {}, already defined for sourceSet {}",
+                    refMapName, set.name, refMaps[refMapName]
+            } else {
+                refMaps[refMapName] = set.name
+            }
+            
+            refMapFile.delete()
+            srgFiles.each {
+                it.value.delete()
+            }
+            this.applyCompilerArgs(compileTask, refMapFile)
+        }
+
         compileTask.doLast {
             if (outSrgFile.exists()) {
-                project.reobf.each {
-                    it.extraFiles(compileTask.outSrgFile)
+                project.reobf.each { task ->
+                    def mapped = false
+                    [task.mappingType, this.defaultObfuscationEnv.toString()].each { arg ->
+                        ReobfMappingType.each { type ->
+                            if (type.matches(arg) && !mapped) {
+                                this.addMappings(task, type, srgFiles[type])
+                                mapped = true
+                            }
+                        }
+                    }
+
+                    if (!mapped) {
+                        this.addMappings(task, SEARGE, srgFiles[SEARGE])
+                    }
                 }
             }
             
             if (refMapFile.exists()) {
                 project.reobf.each {
                     def jar = project.tasks[it.name]
-//                    if ("NOTCH" == jar.mappingType) {
-                        jar.from(notchRefMapFile)
-                        jar.rename(notchRefMapFile.name, refMapName)
-//                    } else if ("SEARGE" == jar.mappingType) {
-//                        jar.from(rRefMapFile)
-//                        jar.rename(notchRefMapFile.name, refMapName)
-//                    }
+                    jar.from(refMapFile)
+                    jar.rename(refMapFile.name, refMapName)
                 }
             }
         }
     }
     
-    void applyCompilerArgs(JavaCompile compileTask, File refMapFile, File notchRefMapFile) {
+    @PackageScope void addMappings(task, type, srgFile) {
+        project.logger.info "Contributing {} ({}) mappings to {}", type, srgFile, task.name
+        task.extraFiles(srgFile)
+    }
+    
+    @PackageScope void applyCompilerArgs(JavaCompile compileTask, File refMapFile) {
         compileTask.options.compilerArgs += [
             "-AreobfSrgFile=${project.tasks.genSrgs.mcpToSrg.canonicalPath}",
             "-AreobfNotchSrgFile=${project.tasks.genSrgs.mcpToNotch.canonicalPath}",
-            "-AoutSrgFile=${compileTask.ext.outSrgFile.canonicalPath}",
-            "-AoutNotchSrgFile=${compileTask.ext.outNotchFile.canonicalPath}",
-            "-AoutRefMapFile=${refMapFile.canonicalPath}",
-            "-AoutNotchRefMapFile=${notchRefMapFile.canonicalPath}"
+            "-AoutSrgFile=${compileTask.outSrgFile.canonicalPath}",
+            "-AoutNotchSrgFile=${compileTask.outNotchFile.canonicalPath}",
+            "-AoutRefMapFile=${refMapFile.canonicalPath}"
         ]
         
         if (this.disableTargetValidator) {
@@ -149,6 +232,10 @@ public class MixinExtension {
         
         if (this.disableTargetExport) {
             compileTask.options.compilerArgs += '-AdisableTargetExport=true'
+        }
+        
+        if (this.defaultObfuscationEnv != null) {
+            compileTask.options.compilerArgs += "-AdefaultObfuscationEnv=${this.defaultObfuscationEnv.toLowerCase()}"
         }
         
         if (this.tokens.size() > 0) {

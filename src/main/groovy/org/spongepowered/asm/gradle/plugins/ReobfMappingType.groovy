@@ -24,42 +24,12 @@
  */
 package org.spongepowered.asm.gradle.plugins
 
-import org.gradle.api.InvalidUserDataException
-import org.gradle.api.Plugin
-import org.gradle.api.Project
-import org.gradle.api.internal.tasks.DefaultSourceSet;
-import org.gradle.api.tasks.SourceSet;
-
-public class MixinGradlePlugin implements Plugin<Project> {
+enum ReobfMappingType {
     
-    @Override
-    public void apply(Project project) {
-        this.checkEnvironment(project)
-        
-        MixinExtension ext = project.extensions.create('mixin', MixinExtension, project)
-        
-        project.afterEvaluate {
-            ext.applyDefault()
-        }
-
-        SourceSet.metaClass.getRefMap = {
-            delegate.ext.refMap
-        }
-        
-        SourceSet.metaClass.setRefMap = { value ->
-            delegate.ext.refMap = value
-            ext.add(delegate)
-        } 
+    SEARGE,
+    NOTCH;
+    
+    boolean matches(Object other) {
+        other.toString()?.equalsIgnoreCase(this.name())
     }
-    
-    private void checkEnvironment(Project project) {
-        if (!project.tasks.findByName('genSrgs')) {
-            throw new InvalidUserDataException("Could not find task 'genSrgs' on $project, ensure ForgeGradle is applied.")
-        }
-
-        if (!project.extensions.findByName('reobf')) {
-            throw new InvalidUserDataException("Could not find property 'reobf' on $project, ensure ForgeGradle is applied.")
-        }
-    }
-    
 }

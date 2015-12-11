@@ -29,8 +29,14 @@ jar.manifest.mainAttributes (
     "Implementation-Version": version
 )
 
+task javadocJar(type: Jar, dependsOn: javadoc) {
+    from javadoc.destinationDir
+    classifier = 'javadoc'
+}
+
 artifacts {
     archives jar
+    archives javadocJar
 }
 
 pluginBundle {
