@@ -24,6 +24,10 @@ archivesBaseName = 'mixingradle'
 targetCompatibility = '1.6'
 sourceCompatibility = '1.6'
 
+repositories {
+    mavenCentral()
+}
+
 configurations {
     deployerJars
 }
