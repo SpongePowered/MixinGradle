@@ -30,6 +30,7 @@ configurations {
 
 dependencies {
     compile gradleApi()
+    deployerJars 'org.apache.maven.wagon:wagon-ftp:2.7'
 }
 
 processResources {
