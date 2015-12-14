@@ -30,28 +30,34 @@ import org.gradle.api.Project
 import org.gradle.api.internal.tasks.DefaultSourceSet;
 import org.gradle.api.tasks.SourceSet;
 
+/**
+ * This is effectively just the entry point for the MixinGradle plugin, most of
+ * the heavy lifting with respect to the AP is handled by {@link MixinExtension}
+ * and here we merely take the opportunity to validate the environment (eg.
+ * check that ForgeGradle is active and the things we need are accessible) and
+ * add the mixin extension to the project.
+ */
 public class MixinGradlePlugin implements Plugin<Project> {
     
+    /* (non-Groovydoc)
+     * @see org.gradle.api.Plugin#apply(java.lang.Object)
+     */
     @Override
-    public void apply(Project project) {
+    void apply(Project project) {
+        // This will throw an exception if any criteria are not met
         this.checkEnvironment(project)
         
-        MixinExtension ext = project.extensions.create('mixin', MixinExtension, project)
-        
-        project.afterEvaluate {
-            ext.applyDefault()
-        }
-
-        SourceSet.metaClass.getRefMap = {
-            delegate.ext.refMap
-        }
-        
-        SourceSet.metaClass.setRefMap = { value ->
-            delegate.ext.refMap = value
-            ext.add(delegate)
-        } 
+        // create the mixin extension
+        project.extensions.create('mixin', MixinExtension.class, project)
     }
     
+    /**
+     * Perform some basic validation on the project environment, mainly checking
+     * that the tasks and extensions we need (provided by ForgeGradle) are
+     * available.
+     * 
+     * @param project Project to validate
+     */
     private void checkEnvironment(Project project) {
         if (!project.tasks.findByName('genSrgs')) {
             throw new InvalidUserDataException("Could not find task 'genSrgs' on $project, ensure ForgeGradle is applied.")
