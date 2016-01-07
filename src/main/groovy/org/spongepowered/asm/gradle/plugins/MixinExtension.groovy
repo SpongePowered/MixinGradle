@@ -26,12 +26,20 @@ package org.spongepowered.asm.gradle.plugins
 
 import static org.spongepowered.asm.gradle.plugins.ReobfMappingType.*
 
+import com.google.common.io.Files
+import groovy.lang.MissingPropertyException
 import groovy.transform.PackageScope
 import org.gradle.api.InvalidUserDataException
 import org.gradle.api.Project
+import org.gradle.api.Task
+import org.gradle.api.artifacts.ProjectDependency
+import org.gradle.api.internal.file.collections.SimpleFileCollection
 import org.gradle.api.tasks.SourceSet
+import org.gradle.api.tasks.bundling.AbstractArchiveTask
 import org.gradle.api.tasks.compile.JavaCompile
+import org.gradle.jvm.tasks.Jar
 
+import java.util.HashSet
 import java.util.Map.Entry
 import java.io.File
 
@@ -40,6 +48,24 @@ import java.io.File
  * of the mixin annotation processor and extensions to sourcesets 
  */
 public class MixinExtension {
+    
+    class ReobfTask {
+        final Project project
+        final Object taskWrapper
+        
+        ReobfTask(Project project, Object taskWrapper) {
+            this.project = project
+            this.taskWrapper = taskWrapper
+        }
+        
+        Jar getJar() {
+            this.project.tasks[this.taskWrapper.name]
+        }
+        
+        String getName() {
+            this.taskWrapper.name
+        }
+    }
     
     /**
      * Cached reference to containing project 
@@ -75,6 +101,11 @@ public class MixinExtension {
     private Map<String, String> tokens = [:]
     
     /**
+     * Reobf tasks we will target
+     */
+    Set<ReobfTask> reobfTasks = []
+    
+    /**
      * If a refMap overlap is detected a warning will be output, however there
      * are situations where a refMap overlap may be desired (for example if
      * different sourceSets are going into different jars) and thus the warning
@@ -93,6 +124,19 @@ public class MixinExtension {
      * view of the mixin AP. 
      */
     boolean disableTargetExport
+    
+    /**
+     * Disables the overwrite checking functionality which raises warnings when
+     * overwrite methods are not appropriately decorated 
+     */
+    boolean disableOverwriteChecker
+    
+    /**
+     * Sets the overwrite checker error level, the default is to raise WARNING
+     * however this can be set to ERROR in order to cause missing decorations
+     * to be treated as errors 
+     */
+    Object overwriteErrorLevel
     
     /**
      * The default obfuscation environment to use when generating refMaps. This
@@ -130,7 +174,32 @@ public class MixinExtension {
      * <tt>afterEvaluate</tt> handler
      */
     private void init() {
+        Project project = this.project
+        def sourceSets = this.sourceSets
+        
         this.project.afterEvaluate {
+            // Search for sourceSets with a refmap property and configure them
+            project.sourceSets.each { set ->
+                if (set.ext.has("refMap")) {
+                    this.configure(set)
+                }
+            }
+
+            // Search for upstream projects and add our jars to their target set
+            project.configurations.compile.allDependencies.withType(ProjectDependency) { upstream ->
+                def mixinExt = upstream.dependencyProject.extensions.findByName("mixin")
+                if (mixinExt) {
+                    project.reobf.each { reobfTaskWrapper ->
+                        mixinExt.reobfTasks += new ReobfTask(project, reobfTaskWrapper)
+                    }
+                }
+            }
+            
+            // Gather reobf jars for processing
+            project.reobf.each { reobfTaskWrapper ->
+                this.reobfTasks += new ReobfTask(project, reobfTaskWrapper)
+            } 
+            
             this.applyDefault()
         }
 
@@ -140,7 +209,17 @@ public class MixinExtension {
         
         SourceSet.metaClass.setRefMap = { value ->
             delegate.ext.refMap = value
-            this.add(delegate)
+        }
+        
+        AbstractArchiveTask.metaClass.getRefMaps = {
+            if (!delegate.ext.has('refMaps')) {
+                delegate.ext.refMaps = new SimpleFileCollection()
+            }
+            delegate.ext.refMaps
+        }
+        
+        AbstractArchiveTask.metaClass.setRefMaps = { value ->
+            delegate.ext.refMaps = value
         }
     }
     
@@ -163,6 +242,20 @@ public class MixinExtension {
      */
     void disableTargetExport() {
         this.disableTargetExport = true
+    }
+    
+    /**
+     * Directive version of {@link #disableOverwriteChecker}
+     */
+    void disableOverwriteChecker() {
+        this.disableOverwriteChecker = true
+    }
+    
+    /**
+     * Directive version of {@link #disableOverwriteChecker}
+     */
+    void overwriteErrorLevel(Object errorLevel) {
+        this.overwriteErrorLevel = errorLevel
     }
     
     /**
@@ -264,8 +357,11 @@ public class MixinExtension {
             this.applyDefault = false
             project.logger.info "No sourceSets added for mixin processing, applying defaults"
             this.disableRefMapWarning = true
-            project.sourceSets.each { set -> 
-                this.add(set, "mixin.refmap.json")
+            project.sourceSets.each { set ->
+                if (!set.ext.has("refMap")) {
+                    set.ext.refMap = "mixin.refmap.json"
+                }
+                this.configure(set)
             }
         }
     }
@@ -293,7 +389,7 @@ public class MixinExtension {
             throw new InvalidUserDataException(sprintf('No \'refMap\' defined on %s', set))
         }
         
-        this.add(set, set.refMap.toString())
+        this.configure(set)
     }
     
     /**
@@ -304,7 +400,12 @@ public class MixinExtension {
      * @param refMapName RefMap name
      */
     void add(String set, Object refMapName) {
-        this.add(project.sourceSets[set], refMapName.toString())
+        SourceSet sourceSet = project.sourceSets.findByName(set)
+        if (sourceSet == null) {
+            throw new InvalidUserDataException(sprintf('No \'refMap\' defined on %s', set))
+        }
+        sourceSet.ext.refMap = refMapName
+        this.configure(sourceSet)
     }
     
     /**
@@ -315,17 +416,17 @@ public class MixinExtension {
      * @param refMapName RefMap name
      */
     void add(SourceSet set, Object refMapName) {
-        this.add(set, refMapName.toString())
+        set.ext.refMap = refMapName.toString()
+        this.configure(set)
     }
     
     /**
-     * Add a sourceSet for mixin processing and specify the refMap name, the
-     * SourceSet must exist
+     * Configure a sourceSet for mixin processing and specify the refMap name,
+     * the SourceSet must exist
      * 
      * @param set SourceSet to add
-     * @param refMapName RefMap name
      */
-    void add(SourceSet set, String refMapName) {
+    void configure(SourceSet set) {
         // Check whether this sourceSet was already added
         if (this.sourceSets.contains(set)) {
             project.logger.info "Not adding {} to mixin processor, sourceSet already added", set
@@ -359,18 +460,17 @@ public class MixinExtension {
         // tasks, this will allow them to be used in the build script if needed
         compileTask.ext.outSrgFile = srgFiles[SEARGE]
         compileTask.ext.outNotchFile = srgFiles[NOTCH]
-        compileTask.ext.refMap = refMapName
         compileTask.ext.refMapFile = refMapFile
-        set.ext.refMap = refMapName
         set.ext.refMapFile = refMapFile
+        compileTask.ext.refMap = set.ext.refMap.toString()
         
         // Closure to prepare AP environment before compile task runs
         compileTask.doFirst {
-            if (!this.disableRefMapWarning && refMaps[refMapName]) {
+            if (!this.disableRefMapWarning && refMaps[compileTask.ext.refMap]) {
                 project.logger.warn "Potential refmap conflict. Duplicate refmap name {} specified for sourceSet {}, already defined for sourceSet {}",
-                    refMapName, set.name, refMaps[refMapName]
+                    compileTask.ext.refMap, set.name, refMaps[compileTask.ext.refMap]
             } else {
-                refMaps[refMapName] = set.name
+                refMaps[compileTask.ext.refMap] = set.name
             }
             
             refMapFile.delete()
@@ -384,31 +484,50 @@ public class MixinExtension {
         // is completed
         compileTask.doLast {
             if (outSrgFile.exists() || outNotchFile.exists()) {
-                project.reobf.each { task ->
-                    def mapped = false
-                    [task.mappingType, this.defaultObfuscationEnv.toString()].each { arg ->
-                        ReobfMappingType.each { type ->
-                            if (type.matches(arg) && !mapped) {
-                                this.addMappings(task, type, srgFiles[type])
-                                mapped = true
+                try {
+                    this.reobfTasks.each { reobfTask ->
+                        def mapped = false
+                        [reobfTask.taskWrapper.mappingType, this.defaultObfuscationEnv.toString()].each { arg ->
+                            ReobfMappingType.each { type ->
+                                if (type.matches(arg) && !mapped) {
+                                    this.addMappings(reobfTask, type, srgFiles[type])
+                                    mapped = true
+                                }
                             }
                         }
+        
+                        // No mapping set was matched, so add the searge mappings
+                        if (!mapped) {
+                            this.addMappings(reobfTask, SEARGE, srgFiles[SEARGE])
+                        }
                     }
-    
-                    // No mapping set was matched, so add the searge mappings
-                    if (!mapped) {
-                        this.addMappings(task, SEARGE, srgFiles[SEARGE])
+                } catch (MissingPropertyException ex) {
+                    if (ex.property == "mappingType") {
+                        throw new InvalidUserDataException("Could not determine mapping type for obf task, ensure ForgeGradle up to date.")
+                    } else {
+                        throw ex
                     }
                 }
             }
+
+            // Refmap is generated with a generic name, rename to
+            // artefact-specific name ready for inclusion into target jar. We
+            // can't use rename in the jar spec because there may be multiple
+            // refmaps with the same source name            
+            File artefactSpecificRefMap = new File(refMapFile.parentFile, compileTask.ext.refMap)
+            
+            // Delete the old one
+            artefactSpecificRefMap.delete()
+            
+            // Copy the new one if it was successfully generated
+            if (compileTask.ext.refMapFile.exists()) {
+                Files.copy(refMapFile, artefactSpecificRefMap) 
+            }
             
             // Add the refmap to all reobf'd jars
-            if (refMapFile.exists()) {
-                project.reobf.each {
-                    def jar = project.tasks[it.name]
-                    jar.from(refMapFile)
-                    jar.rename(refMapFile.name, refMapName)
-                }
+            this.reobfTasks.each { reobfTask ->
+                reobfTask.jar.refMaps.files.add(project.file(artefactSpecificRefMap))
+                reobfTask.jar.from(artefactSpecificRefMap)
             }
         }
     }
@@ -417,18 +536,18 @@ public class MixinExtension {
      * Callback from <tt>compileTask.doLast</tt> closure, attempts to contribute
      * mappings of the specified type to the supplied task
      * 
-     * @param task an <tt>IReobfuscator</tt> instance (hopefully)
+     * @param reobfTask a <tt>ReobfTask</tt> instance
      * @param type Mapping type to add
      * @param srgFile SRG mapping file to add to the task
      */
-    @PackageScope void addMappings(task, ReobfMappingType type, File srgFile) {
+    @PackageScope void addMappings(ReobfTask reobfTask, ReobfMappingType type, File srgFile) {
         if (!srgFile.exists()) {
-            project.logger.warn "Unable to contribute {} mappings to {}, the specified file ({}) was not found", type, task.name, srgFile
+            project.logger.warn "Unable to contribute {} mappings to {}, the specified file ({}) was not found", type, reobfTask.name, srgFile
             return    
         }
         
-        project.logger.info "Contributing {} ({}) mappings to {}", type, srgFile, task.name
-        task.extraFiles(srgFile)
+        project.logger.info "Contributing {} ({}) mappings to {} in {}", type, srgFile, reobfTask.name, reobfTask.project
+        reobfTask.taskWrapper.extraFiles(srgFile)
     }
     
     /**
@@ -453,6 +572,14 @@ public class MixinExtension {
         
         if (this.disableTargetExport) {
             compileTask.options.compilerArgs += '-AdisableTargetExport=true'
+        }
+        
+        if (this.disableOverwriteChecker) {
+            compileTask.options.compilerArgs += '-AdisableOverwriteChecker=true'
+        }
+        
+        if (this.overwriteErrorLevel != null) {
+            compileTask.options.compilerArgs += '-AoverwriteErrorLevel=${this.overwriteErrorLevel.toString().trim()}'
         }
         
         if (this.defaultObfuscationEnv != null) {

@@ -61,6 +61,7 @@ Thumbs.db
 .classpath
 .externalToolBuilders
 .gradle
+.groovy
 .nb-gradle
 .idea
 .project
