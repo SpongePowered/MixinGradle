@@ -160,6 +160,16 @@ public class MixinExtension {
     Object reobfNotchSrgFile
     
     /**
+     * Additional Searge SRG files to supply to the annotation processor. LTP.
+     */
+    private List<Object> extraSrgFiles = []
+    
+    /**
+     * Additional Notch SRG files to supply to the annotation processor. LTP.
+     */
+    private List<Object> extraNotchFiles = []
+    
+    /**
      * ctor
      * 
      * @param project reference to the containing project
@@ -294,6 +304,24 @@ public class MixinExtension {
     }
     
     /**
+     * Adds an additional SRG file for the AP to consume. The environment for
+     * the SRG file must be specified
+     * 
+     * @param type Obfuscation type to add mapping to
+     * @param file Object which resolves to a file
+     */
+    void extraSrgFile(String type, Object file) {
+        type = type.toUpperCase()
+        if (SEARGE.matches(type)) {
+            this.extraSrgFiles += file
+        } else if (NOTCH.matches(type)) {
+            this.extraNotchFiles += file
+        } else {
+            throw new InvalidUserDataException("Invalid obfuscation type '${type}' specified for extraSrgFile")
+        }
+    }
+    
+    /**
      * Adds a boolean token with the value true
      * 
      * @param name boolean token name
@@ -344,6 +372,20 @@ public class MixinExtension {
             if (!first) arg <<= ";"
             first = false
             arg <<= token.key << "=" << token.value
+        }
+        arg
+    }
+    
+    @PackageScope String getSrgsArgument(String argName, List<Object> list) {
+        if (list.size() < 1) {
+            return ""
+        }
+        def arg = "-A${argName}="
+        def first = true
+        for (String entry : list) {
+            if (!first) arg <<= ";"
+            first = false
+            arg <<= project.file(entry).toString()
         }
         arg
     }
@@ -588,6 +630,14 @@ public class MixinExtension {
         
         if (this.tokens.size() > 0) {
             compileTask.options.compilerArgs += this.tokenArgument
+        }
+        
+        if (this.extraSrgFiles.size() > 0) {
+            compileTask.options.compilerArgs += this.getSrgsArgument("reobfSrgFiles", this.extraSrgFiles)
+        }
+        
+        if (this.extraNotchFiles.size() > 0) {
+            compileTask.options.compilerArgs += this.getSrgsArgument("reobfNotchSrgFiles", this.extraNotchFiles)
         }
     }
 

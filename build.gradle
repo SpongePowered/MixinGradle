@@ -19,7 +19,7 @@ apply plugin: "com.gradle.plugin-publish"
 defaultTasks 'licenseFormat', 'build'
 
 group = 'org.spongepowered'
-version = '0.2-SNAPSHOT'
+version = '0.3-SNAPSHOT'
 archivesBaseName = 'mixingradle'
 targetCompatibility = '1.6'
 sourceCompatibility = '1.6'
