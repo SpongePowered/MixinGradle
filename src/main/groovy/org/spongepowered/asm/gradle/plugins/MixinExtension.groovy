@@ -32,12 +32,16 @@ import groovy.transform.PackageScope
 import org.gradle.api.InvalidUserDataException
 import org.gradle.api.Project
 import org.gradle.api.Task
+import org.gradle.api.artifacts.Configuration
+import org.gradle.api.artifacts.Dependency
 import org.gradle.api.artifacts.ProjectDependency
 import org.gradle.api.internal.file.collections.SimpleFileCollection
 import org.gradle.api.tasks.SourceSet
 import org.gradle.api.tasks.bundling.AbstractArchiveTask
 import org.gradle.api.tasks.compile.JavaCompile
 import org.gradle.jvm.tasks.Jar
+import org.spongepowered.asm.gradle.plugins.meta.Import
+import org.spongepowered.asm.gradle.plugins.meta.Imports
 
 import java.util.HashSet
 import java.util.Map.Entry
@@ -168,6 +172,16 @@ public class MixinExtension {
      * Additional Notch SRG files to supply to the annotation processor. LTP.
      */
     private List<Object> extraNotchFiles = []
+    
+    /**
+     * Configurations to scan for dependencies when running AP
+     */
+    private Set<Object> importConfigs = []
+    
+    /**
+     * Additional libraries to scan when running AP
+     */
+    private Set<Object> importLibs = []
     
     /**
      * ctor
@@ -338,6 +352,20 @@ public class MixinExtension {
      */
     void token(Object name, Object value) {
         this.tokens.put(name.toString().trim(), value.toString().trim())
+    }
+    
+    void importConfig(Object config) {
+        if (config == null) {
+            throw new InvalidUserDataException("Cannot import from null config")
+        }
+        this.importConfigs += config
+    }
+    
+    void importLibrary(Object lib) {
+        if (lib == null) {
+            throw new InvalidUserDataException("Cannot import null library")
+        }
+        this.importLibs += lib
     }
     
     /**
@@ -639,6 +667,44 @@ public class MixinExtension {
         if (this.extraNotchFiles.size() > 0) {
             compileTask.options.compilerArgs += this.getSrgsArgument("reobfNotchSrgFiles", this.extraNotchFiles)
         }
+
+        File importsFile = this.generateImportsFile(compileTask)
+        if (importsFile != null) {
+            compileTask.options.compilerArgs += "-AdependencyTargetsFile=${importsFile.canonicalPath}"
+        }    
     }
 
+    private File generateImportsFile(JavaCompile compileTask) {
+        File importsFile = new File(compileTask.temporaryDir, "mixin.imports.json")
+        importsFile.delete()
+        
+        Set<File> libs = []
+        
+        for (Object cfg : this.importConfigs) {
+            def config = (cfg instanceof Configuration) ? cfg : project.configurations.findByName(cfg.toString())
+            if (config != null) {
+                for (File file : config.files) {
+                    libs += file
+                }
+            }
+        }
+
+        for (Object lib : this.importLibs) {
+            libs += project.file(lib)
+        }
+
+        if (libs.size() == 0) {
+            return null;
+        }
+        
+        importsFile.newOutputStream().withStream { stream ->
+            PrintWriter writer = new PrintWriter(stream);
+            for (File lib : libs) {
+                Imports[lib].appendTo(writer)
+            }
+            writer.flush()
+        }
+        
+        return importsFile
+    }
 }
