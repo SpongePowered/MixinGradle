@@ -36,18 +36,36 @@ import org.objectweb.asm.tree.AnnotationNode
 import java.util.zip.ZipEntry
 import java.util.zip.ZipInputStream
 
+/**
+ * Represents an imported library for the annotation processor. Currently only
+ * supports scanning for mixins and logging their targets
+ */
 class Import {
     
+    /**
+     * Imported library
+     */
     File file
     
+    /**
+     * Discovered mixin target lines (preformatted
+     */
     List<String> targets = []
     
+    /**
+     * True if the import was already scanned
+     */
     private boolean generated = false
 
     Import(File file) {
         this.file = file
     }
     
+    /**
+     * Scan the import
+     * 
+     * @return fluent interface
+     */
     Import read() {
         if (this.generated) {
             return this
@@ -61,6 +79,9 @@ class Import {
         return this
     }
     
+    /**
+     * Scan a file import
+     */
     @PackageScope void readFile() {
         this.targets.clear()
         
@@ -81,16 +102,33 @@ class Import {
         }
     }
     
+    /**
+     * Append the contents of this file to the specified writer
+     * 
+     * @param writer Writer to append to
+     * @return fluent interface
+     */
     Import appendTo(PrintWriter writer) {
+        this.read()
         for (String target : this.targets) {
             writer.println(target)
         }
         return this
     }
 
+    /**
+     * ASM class visitor for scanning the classes for Mixin annotations
+     */
     private static class MixinScannerVisitor extends ClassVisitor {
+        
+        /**
+         * Discovered mixin annotation 
+         */
         AnnotationNode mixin = null
-        Set<String> targets = []
+        
+        /**
+         * Discovered class name
+         */
         String name
 
         MixinScannerVisitor() {

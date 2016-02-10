@@ -674,6 +674,14 @@ public class MixinExtension {
         }    
     }
 
+    /**
+     * Generates an "imports" file given the currently specified imports. If the
+     * import set is empty then null is returned, otherwise generates and
+     * returns a {@link File} which contains the generated import mappings.
+     * 
+     * @param compileTask Compile task for context
+     * @return generated imports file or null if no imports in scope
+     */
     private File generateImportsFile(JavaCompile compileTask) {
         File importsFile = new File(compileTask.temporaryDir, "mixin.imports.json")
         importsFile.delete()

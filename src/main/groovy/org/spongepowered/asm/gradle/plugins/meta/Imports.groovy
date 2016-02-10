@@ -24,10 +24,22 @@
  */
 package org.spongepowered.asm.gradle.plugins.meta
 
+/**
+ * Central cache for managing {@link Import Imports}
+ */
 class Imports {
     
+    /**
+     * Import cache 
+     */
     private static Map<File, Import> imports = [:]
 
+    /**
+     * Get import for file using array syntax
+     * 
+     * @param file Import jar file
+     * @return new or existing Import
+     */
     static Import getAt(File file) {
         Import imp = Imports.imports.get(file)
         if (imp == null) {
