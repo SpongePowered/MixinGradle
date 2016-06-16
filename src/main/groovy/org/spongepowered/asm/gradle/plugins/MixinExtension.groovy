@@ -596,7 +596,7 @@ public class MixinExtension {
             
             // Add the refmap to all reobf'd jars
             this.reobfTasks.each { reobfTask ->
-                reobfTask.jar.refMaps.files.add(project.file(artefactSpecificRefMap))
+                reobfTask.jar.getRefMaps().files.add(project.file(artefactSpecificRefMap))
                 reobfTask.jar.from(artefactSpecificRefMap)
             }
         }
