@@ -475,7 +475,9 @@ public class MixinExtension {
             throw new InvalidUserDataException(sprintf('No \'refMap\' defined on %s', set))
         }
         sourceSet.ext.refMap = refMapName
-        this.configure(sourceSet)
+        project.afterEvaluate {
+            this.configure(sourceSet)
+        }
     }
     
     /**
@@ -550,6 +552,12 @@ public class MixinExtension {
             this.applyCompilerArgs(compileTask)
         }
 
+        // Refmap is generated with a generic name, rename to
+        // artefact-specific name ready for inclusion into target jar. We
+        // can't use rename in the jar spec because there may be multiple
+        // refmaps with the same source name
+        File artefactSpecificRefMap = new File(refMapFile.parentFile, compileTask.ext.refMap)
+
         // Closure to allocate generated AP resources once compile task
         // is completed
         compileTask.doLast {
@@ -580,26 +588,22 @@ public class MixinExtension {
                 }
             }
 
-            // Refmap is generated with a generic name, rename to
-            // artefact-specific name ready for inclusion into target jar. We
-            // can't use rename in the jar spec because there may be multiple
-            // refmaps with the same source name            
-            File artefactSpecificRefMap = new File(refMapFile.parentFile, compileTask.ext.refMap)
-            
             // Delete the old one
             artefactSpecificRefMap.delete()
-            
+
             // Copy the new one if it was successfully generated
             if (compileTask.ext.refMapFile.exists()) {
                 Files.copy(refMapFile, artefactSpecificRefMap) 
             }
-            
-            // Add the refmap to all reobf'd jars
-            this.reobfTasks.each { reobfTask ->
-                reobfTask.jar.getRefMaps().files.add(project.file(artefactSpecificRefMap))
-                reobfTask.jar.from(artefactSpecificRefMap)
-            }
+
         }
+
+        // Add the refmap to all reobf'd jars
+        this.reobfTasks.each { reobfTask ->
+            reobfTask.jar.getRefMaps().files.add(artefactSpecificRefMap)
+            reobfTask.jar.from(artefactSpecificRefMap)
+        }
+
     }
     
     /**
