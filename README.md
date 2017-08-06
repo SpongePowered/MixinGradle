@@ -24,7 +24,7 @@ buildscript {
         }
         dependencies {
             ...
-            classpath 'org.spongepowered:mixingradle:0.1-SNAPSHOT'
+            classpath 'org.spongepowered:mixingradle:0.5-SNAPSHOT'
         }
 }
  ```
@@ -43,15 +43,15 @@ mixin {
 }
  ```
   
-4. Alternatively, you can simply specify the `refMap` property directly on your sourceSet:
+4. Alternatively, you can simply specify the `ext.refMap` property directly on your sourceSet:
  
  ```groovy
 sourceSets {
         main {
-            refMap = "main.refmap.json"
+            ext.refMap = "main.refmap.json"
         }
         another {
-            refMap = "another.refmap.json"
+            ext.refMap = "another.refmap.json"
         }
 }
  ```
