@@ -3,8 +3,6 @@ dist: trusty
 
 language: groovy
 jdk:
-  - openjdk6
-  - openjdk7
   - openjdk8
 
 notifications:
