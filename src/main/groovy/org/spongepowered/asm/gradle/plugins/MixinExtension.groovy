@@ -202,6 +202,11 @@ public class MixinExtension {
         def sourceSets = this.sourceSets
         
         this.project.afterEvaluate {
+            // Gather reobf jars for processing
+            project.reobf.each { reobfTaskWrapper ->
+                this.reobfTasks += new ReobfTask(project, reobfTaskWrapper)
+            }
+
             // Search for sourceSets with a refmap property and configure them
             project.sourceSets.each { set ->
                 if (set.ext.has("refMap")) {
@@ -218,11 +223,7 @@ public class MixinExtension {
                     }
                 }
             }
-            
-            // Gather reobf jars for processing
-            project.reobf.each { reobfTaskWrapper ->
-                this.reobfTasks += new ReobfTask(project, reobfTaskWrapper)
-            } 
+
             
             this.applyDefault()
         }
@@ -459,7 +460,9 @@ public class MixinExtension {
             throw new InvalidUserDataException(sprintf('No \'refMap\' defined on %s', set))
         }
         
-        this.configure(set)
+        project.afterEvaluate {
+            this.configure(set)
+        }
     }
     
     /**
@@ -489,7 +492,9 @@ public class MixinExtension {
      */
     void add(SourceSet set, Object refMapName) {
         set.ext.refMap = refMapName.toString()
-        this.configure(set)
+        project.afterEvaluate {
+            this.configure(set)
+        }
     }
     
     /**
