@@ -563,26 +563,36 @@ public class MixinExtension {
         // refmaps with the same source name
         File artefactSpecificRefMap = new File(refMapFile.parentFile, compileTask.ext.refMap)
 
+        // Closure to rename generated refMap to artefact-specific refmap when
+        // compile task is completed
+        compileTask.doLast {
+            // Delete the old one
+            artefactSpecificRefMap.delete()
+
+            // Copy the new one if it was successfully generated
+            if (compileTask.ext.refMapFile.exists()) {
+                Files.copy(refMapFile, artefactSpecificRefMap) 
+            }
+        }
+
         // Closure to allocate generated AP resources once compile task
         // is completed
-        compileTask.doLast {
-            if (outSrgFile.exists() || outNotchFile.exists()) {
+        this.reobfTasks.each { reobfTask ->
+            reobfTask.taskWrapper.task.doFirst {
                 try {
-                    this.reobfTasks.each { reobfTask ->
-                        def mapped = false
-                        [reobfTask.taskWrapper.mappingType, this.defaultObfuscationEnv.toString()].each { arg ->
-                            ReobfMappingType.each { type ->
-                                if (type.matches(arg) && !mapped) {
-                                    this.addMappings(reobfTask, type, srgFiles[type])
-                                    mapped = true
-                                }
+                    def mapped = false
+                    [reobfTask.taskWrapper.mappingType, this.defaultObfuscationEnv.toString()].each { arg ->
+                        ReobfMappingType.each { type ->
+                            if (type.matches(arg) && !mapped && srgFiles[type].exists()) {
+                                this.addMappings(reobfTask, type, srgFiles[type])
+                                mapped = true
                             }
                         }
-        
-                        // No mapping set was matched, so add the searge mappings
-                        if (!mapped) {
-                            this.addMappings(reobfTask, SEARGE, srgFiles[SEARGE])
-                        }
+                    }
+    
+                    // No mapping set was matched, so add the searge mappings
+                    if (!mapped && srgFiles[SEARGE].exists()) {
+                        this.addMappings(reobfTask, SEARGE, srgFiles[SEARGE])
                     }
                 } catch (MissingPropertyException ex) {
                     if (ex.property == "mappingType") {
@@ -592,16 +602,8 @@ public class MixinExtension {
                     }
                 }
             }
-
-            // Delete the old one
-            artefactSpecificRefMap.delete()
-
-            // Copy the new one if it was successfully generated
-            if (compileTask.ext.refMapFile.exists()) {
-                Files.copy(refMapFile, artefactSpecificRefMap) 
-            }
-
         }
+
 
         // Add the refmap to all reobf'd jars
         this.reobfTasks.each { reobfTask ->
