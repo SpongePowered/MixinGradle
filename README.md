@@ -1,6 +1,6 @@
 ![MixinGradle Logo](docs/logo.png?raw=true)
 
-**MixinGradle** is a [Gradle](http://gradle.org/) plugin which simplifies the build-time complexity of working with the **[SpongePowered Mixin](/SpongePowered/Mixin)** framework for Java. It currently only supports usage with **[ForgeGradle](MinecraftForge/ForgeGradle)**.
+**MixinGradle** is a [Gradle](http://gradle.org/) plugin which simplifies the build-time complexity of working with the **[SpongePowered Mixin](https://github.com/SpongePowered/Mixin)** framework for Java. It currently only supports usage with **[ForgeGradle](https://github.com/MinecraftForge/ForgeGradle)**.
 
 ### Features
 
@@ -13,7 +13,7 @@
 
 ### Using MixinGradle
 
-To use **MixinGradle** you *must* be using **[ForgeGradle](MinecraftForge/ForgeGradle)**. To configure the plugin for your build:
+To use **MixinGradle** you *must* be using **[ForgeGradle](https://github.com/MinecraftForge/ForgeGradle)**. To configure the plugin for your build:
 
 1. Add a source repository to your `buildScript -> dependencies` block:
 
