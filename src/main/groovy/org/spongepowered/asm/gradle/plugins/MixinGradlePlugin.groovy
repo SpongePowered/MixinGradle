@@ -27,8 +27,11 @@ package org.spongepowered.asm.gradle.plugins
 import org.gradle.api.InvalidUserDataException
 import org.gradle.api.Plugin
 import org.gradle.api.Project
+import org.gradle.api.file.ProjectLayout
 import org.gradle.api.internal.tasks.DefaultSourceSet;
 import org.gradle.api.tasks.SourceSet;
+
+import javax.inject.Inject
 
 /**
  * This is effectively just the entry point for the MixinGradle plugin, most of
@@ -39,6 +42,12 @@ import org.gradle.api.tasks.SourceSet;
  */
 public class MixinGradlePlugin implements Plugin<Project> {
     
+    /**
+     * Plugin version, sent to the AP so that the AP can notify if the plugin
+     * version is too old to support its feature set
+     */
+    static final String VERSION = "0.7"
+
     /* (non-Groovydoc)
      * @see org.gradle.api.Plugin#apply(java.lang.Object)
      */
@@ -59,12 +68,12 @@ public class MixinGradlePlugin implements Plugin<Project> {
      * @param project Project to validate
      */
     private void checkEnvironment(Project project) {
-        if (!project.tasks.findByName('genSrgs')) {
-            throw new InvalidUserDataException("Could not find task 'genSrgs' on $project, ensure ForgeGradle is applied.")
+        if (project.tasks.findByName('genSrgs')) {
+            throw new InvalidUserDataException("Found a 'genSrgs' task on $project, this version of MixinGradle does not support ForgeGradle 2.x.")
         }
 
-        if (!project.extensions.findByName('reobf')) {
-            throw new InvalidUserDataException("Could not find property 'reobf' on $project, ensure ForgeGradle is applied.")
+        if (!project.extensions.findByName('minecraft')) {
+            throw new InvalidUserDataException("Could not find property 'minecraft' on $project, ensure ForgeGradle is applied.")
         }
     }
     

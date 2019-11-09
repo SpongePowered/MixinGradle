@@ -24,21 +24,21 @@
  */
 package org.spongepowered.asm.gradle.plugins
 
-import static org.spongepowered.asm.gradle.plugins.ReobfMappingType.*
-
 import com.google.common.io.Files
 import groovy.lang.MissingPropertyException
 import groovy.transform.PackageScope
+import org.gradle.api.DefaultTask
 import org.gradle.api.InvalidUserDataException
 import org.gradle.api.Project
 import org.gradle.api.Task
 import org.gradle.api.artifacts.Configuration
 import org.gradle.api.artifacts.Dependency
 import org.gradle.api.artifacts.ProjectDependency
-import org.gradle.api.internal.file.collections.SimpleFileCollection
 import org.gradle.api.tasks.SourceSet
+import org.gradle.api.tasks.TaskAction
 import org.gradle.api.tasks.bundling.AbstractArchiveTask
 import org.gradle.api.tasks.compile.JavaCompile
+import org.gradle.internal.impldep.bsh.This
 import org.gradle.jvm.tasks.Jar
 import org.spongepowered.asm.gradle.plugins.meta.Import
 import org.spongepowered.asm.gradle.plugins.meta.Imports
@@ -53,24 +53,47 @@ import java.io.File
  */
 public class MixinExtension {
     
-    class ReobfTask {
+    static class ReobfTask {
         final Project project
-        final Object taskWrapper
+        final Object handle
         
-        ReobfTask(Project project, Object taskWrapper) {
+        ReobfTask(Project project, Object handle) {
             this.project = project
-            this.taskWrapper = taskWrapper
+            this.handle = handle
         }
         
         Jar getJar() {
-            this.project.tasks[this.taskWrapper.name]
+            this.handle
         }
         
         String getName() {
-            this.taskWrapper.name
+            this.handle.name
         }
     }
     
+    static class AddRefMapToJarTask extends DefaultTask {
+        
+        Jar remappedJar
+        
+        Set<ReobfTask> reobfTasks
+        
+        Set<File> jarRefMaps = []
+        
+        @TaskAction
+        def run() {
+            // Add the refmap to all reobf'd jars
+            this.reobfTasks.each { reobfTask ->
+                reobfTask.handle.dependsOn.findAll { it == remappedJar }.each { jar ->
+                    jarRefMaps.each { artefactSpecificRefMap ->                        
+                        project.logger.info "Contributing refmap ({}) to {} in {}", artefactSpecificRefMap, jar.archiveName, reobfTask.project
+                        jar.getRefMaps().from(artefactSpecificRefMap)
+                        jar.from(artefactSpecificRefMap)
+                    }
+                }
+            }
+        }
+    }
+
     /**
      * Cached reference to containing project 
      */
@@ -107,7 +130,7 @@ public class MixinExtension {
     /**
      * Reobf tasks we will target
      */
-    Set<ReobfTask> reobfTasks = []
+    @PackageScope Set<ReobfTask> reobfTasks = []
     
     /**
      * If a refMap overlap is detected a warning will be output, however there
@@ -147,8 +170,14 @@ public class MixinExtension {
      * is the obfuscation set which will end up in the <tt>mappings</tt> node
      * in the generated refMap. 
      */
-    Object defaultObfuscationEnv
+    String defaultObfuscationEnv = "searge"
     
+    /**
+     * Mapping types list to pass to the AP. Mapping services may parse the
+     * supplied options to determine whether they should activate. 
+     */
+    List<Object> mappingTypes = [ "tsrg" ]
+
     /**
      * By default we will attempt to find the SRG file to feed to the AP by
      * querying the <tt>genSrgs</tt> task, however the user can override the
@@ -157,21 +186,9 @@ public class MixinExtension {
     Object reobfSrgFile
     
     /**
-     * By default we will attempt to find the SRG file to feed to the AP by
-     * querying the <tt>genSrgs</tt> task, however the user can override the
-     * file by setting this argument 
+     * Additional TSRG mapping files to supply to the annotation processor. LTP.
      */
-    Object reobfNotchSrgFile
-    
-    /**
-     * Additional Searge SRG files to supply to the annotation processor. LTP.
-     */
-    private List<Object> extraSrgFiles = []
-    
-    /**
-     * Additional Notch SRG files to supply to the annotation processor. LTP.
-     */
-    private List<Object> extraNotchFiles = []
+    private List<Object> extraMappings = []
     
     /**
      * Configurations to scan for dependencies when running AP
@@ -182,7 +199,7 @@ public class MixinExtension {
      * Additional libraries to scan when running AP
      */
     private Set<Object> importLibs = []
-    
+
     /**
      * ctor
      * 
@@ -198,32 +215,30 @@ public class MixinExtension {
      * <tt>afterEvaluate</tt> handler
      */
     private void init() {
-        Project project = this.project
-        def sourceSets = this.sourceSets
+        Project proj = this.project
         
         this.project.afterEvaluate {
             // Gather reobf jars for processing
-            project.reobf.each { reobfTaskWrapper ->
-                this.reobfTasks += new ReobfTask(project, reobfTaskWrapper)
+            proj.reobf.each { reobfTaskHandle ->
+                this.reobfTasks += new ReobfTask(proj, reobfTaskHandle)
             }
 
             // Search for sourceSets with a refmap property and configure them
-            project.sourceSets.each { set ->
+            proj.sourceSets.each { set ->
                 if (set.ext.has("refMap")) {
                     this.configure(set)
                 }
             }
 
             // Search for upstream projects and add our jars to their target set
-            project.configurations.compile.allDependencies.withType(ProjectDependency) { upstream ->
+            proj.configurations.compile.allDependencies.withType(ProjectDependency) { upstream ->
                 def mixinExt = upstream.dependencyProject.extensions.findByName("mixin")
                 if (mixinExt) {
-                    project.reobf.each { reobfTaskWrapper ->
-                        mixinExt.reobfTasks += new ReobfTask(project, reobfTaskWrapper)
+                    proj.reobf.each { reobfTaskWrapper ->
+                        mixinExt.reobfTasks += new ReobfTask(proj, reobfTaskWrapper)
                     }
                 }
             }
-
             
             this.applyDefault()
         }
@@ -238,7 +253,7 @@ public class MixinExtension {
         
         AbstractArchiveTask.metaClass.getRefMaps = {
             if (!delegate.ext.has('refMaps')) {
-                delegate.ext.refMaps = new SimpleFileCollection()
+                delegate.ext.refMaps = proj.layout.configurableFiles();
             }
             delegate.ext.refMaps
         }
@@ -284,56 +299,19 @@ public class MixinExtension {
     }
     
     /**
-     * Convenience getter so that "notch" can be used unqoted 
-     */
-    String getNotch() {
-        NOTCH
-    }
-    
-    /**
-     * Convenience getter so that "searge" can be used unqoted 
-     */
-    String getSearge() {
-        SEARGE
-    }
-    
-    /**
-     * Convenience getter so that "srg" can be used unqoted 
-     */
-    String getSrg() {
-        SEARGE
-    }
-    
-    /**
      * Getter for reobfSrgFile, fetch from the <tt>genSrgs</tt> task if not configured
      */
-    Object getReobfSrgFile() {
-        this.reobfSrgFile != null ? project.file(this.reobfSrgFile) : project.tasks.genSrgs.mcpToSrg
+    Object getMappings() {
+        this.reobfSrgFile != null ? project.file(this.reobfSrgFile) : project.tasks.createMcpToSrg.outputs.files[0]
     }
     
     /**
-     * Getter for reobfSrgFile, fetch from the <tt>genSrgs</tt> task if not configured
-     */
-    Object getReobfNotchSrgFile() {
-        this.reobfNotchSrgFile != null ? project.file(this.reobfNotchSrgFile) : project.tasks.genSrgs.mcpToNotch
-    }
-    
-    /**
-     * Adds an additional SRG file for the AP to consume. The environment for
-     * the SRG file must be specified
+     * Adds an additional TSRG file for the AP to consume.
      * 
-     * @param type Obfuscation type to add mapping to
      * @param file Object which resolves to a file
      */
-    void extraSrgFile(String type, Object file) {
-        type = type.toUpperCase()
-        if (SEARGE.matches(type)) {
-            this.extraSrgFiles += file
-        } else if (NOTCH.matches(type)) {
-            this.extraNotchFiles += file
-        } else {
-            throw new InvalidUserDataException("Invalid obfuscation type '${type}' specified for extraSrgFile")
-        }
+    void extraMappings(Object file) {
+        this.extraMappings += file
     }
     
     /**
@@ -353,20 +331,6 @@ public class MixinExtension {
      */
     void token(Object name, Object value) {
         this.tokens.put(name.toString().trim(), value.toString().trim())
-    }
-    
-    void importConfig(Object config) {
-        if (config == null) {
-            throw new InvalidUserDataException("Cannot import from null config")
-        }
-        this.importConfigs += config
-    }
-    
-    void importLibrary(Object lib) {
-        if (lib == null) {
-            throw new InvalidUserDataException("Cannot import null library")
-        }
-        this.importLibs += lib
     }
     
     /**
@@ -389,34 +353,12 @@ public class MixinExtension {
     }
     
     /**
-     * Internal method which compiles the token map to an AP argument
+     * Sanity check current tokens before passing them to the AP
      */
-    @PackageScope String getTokenArgument() {
-        def arg = '-Atokens='
-        def first = true
-        for (Entry<String, String> token : this.tokens) {
-            if (token.value.indexOf(';') > -1) {
-                throw new InvalidUserDataException(sprintf('Invalid token value \'%s\' for token \'%s\'', token.value, token.key))
-            }
-            if (!first) arg <<= ";"
-            first = false
-            arg <<= token.key << "=" << token.value
+    @PackageScope void checkTokens() {
+        this.tokens.find { it.value.contains(';') }.each {
+            throw new InvalidUserDataException("Invalid token value '${it.value}' for token '${it.key}'")
         }
-        arg
-    }
-    
-    @PackageScope String getSrgsArgument(String argName, List<Object> list) {
-        if (list.size() < 1) {
-            return ""
-        }
-        def arg = "-A${argName}="
-        def first = true
-        for (String entry : list) {
-            if (!first) arg <<= ";"
-            first = false
-            arg <<= project.file(entry).toString()
-        }
-        arg
     }
     
     /**
@@ -527,19 +469,19 @@ public class MixinExtension {
         // Refmap file
         def refMapFile = project.file("${compileTask.temporaryDir}/${compileTask.name}-refmap.json")
         
-        // Srg files
-        def srgFiles = [
-            (ReobfMappingType.SEARGE): project.file("${compileTask.temporaryDir}/mcp-srg.srg"),
-            (ReobfMappingType.NOTCH): project.file("${compileTask.temporaryDir}/mcp-notch.srg")
-        ]
+        // Generated tsrg file
+        def tsrgFile = project.file("${compileTask.temporaryDir}/${compileTask.name}-mappings.tsrg")
         
         // Add our vars as extension properties to the sourceSet and compile
         // tasks, this will allow them to be used in the build script if needed
-        compileTask.ext.outSrgFile = srgFiles[SEARGE]
-        compileTask.ext.outNotchFile = srgFiles[NOTCH]
+        compileTask.ext.outTsrgFile = tsrgFile
         compileTask.ext.refMapFile = refMapFile
         set.ext.refMapFile = refMapFile
         compileTask.ext.refMap = set.ext.refMap.toString()
+
+        // We need createMcpToSrg to run in order to generate the mappings
+        // consumed by the AP        
+        compileTask.dependsOn("createMcpToSrg")
         
         // Closure to prepare AP environment before compile task runs
         compileTask.doFirst {
@@ -551,84 +493,54 @@ public class MixinExtension {
             }
             
             refMapFile.delete()
-            srgFiles.each {
-                it.value.delete()
-            }
+            tsrgFile.delete()
+            
+            this.checkTokens()
             this.applyCompilerArgs(compileTask)
         }
 
-        // Refmap is generated with a generic name, rename to
-        // artefact-specific name ready for inclusion into target jar. We
-        // can't use rename in the jar spec because there may be multiple
-        // refmaps with the same source name
-        File artefactSpecificRefMap = new File(refMapFile.parentFile, compileTask.ext.refMap)
+        // Refmap is generated with a generic name, rename to sourceset-specific
+        // name ready for inclusion into target jar. We can't use rename in the
+        // jar spec because there may be multiple refmaps with the same source
+        // name
+        File taskSpecificRefMap = new File(refMapFile.parentFile, compileTask.ext.refMap)
 
         // Closure to rename generated refMap to artefact-specific refmap when
         // compile task is completed
         compileTask.doLast {
             // Delete the old one
-            artefactSpecificRefMap.delete()
+            taskSpecificRefMap.delete()
 
             // Copy the new one if it was successfully generated
-            if (compileTask.ext.refMapFile.exists()) {
-                Files.copy(refMapFile, artefactSpecificRefMap) 
+            if (refMapFile.exists()) {
+                Files.copy(refMapFile, taskSpecificRefMap) 
+            }
+        }
+        
+        // Create a task to contribute the refmap to the jar. Since we don't
+        // know at this point which jars are going to be reobfuscated (the
+        // inputs to reobf tasks are lazily evaluated at the dependsOn isn't
+        // added until later) we add one such task for every jar and the task
+        // can handle the heavy lifting of figuring out what to contribute
+        project.tasks.withType(Jar.class) { jarTask ->
+            project.tasks.maybeCreate("addRefMapTo${jarTask.name.capitalize()}", AddRefMapToJarTask.class).configure {
+                dependsOn(compileTask)
+                remappedJar = jarTask
+                reobfTasks = this.reobfTasks
+                jarRefMaps += taskSpecificRefMap
+                jarTask.dependsOn(delegate)
             }
         }
 
-        // Closure to allocate generated AP resources once compile task
-        // is completed
-        this.reobfTasks.each { reobfTask ->
-            reobfTask.taskWrapper.task.doFirst {
-                try {
-                    def mapped = false
-                    [reobfTask.taskWrapper.mappingType, this.defaultObfuscationEnv.toString()].each { arg ->
-                        ReobfMappingType.each { type ->
-                            if (type.matches(arg) && !mapped && srgFiles[type].exists()) {
-                                this.addMappings(reobfTask, type, srgFiles[type])
-                                mapped = true
-                            }
-                        }
-                    }
-    
-                    // No mapping set was matched, so add the searge mappings
-                    if (!mapped && srgFiles[SEARGE].exists()) {
-                        this.addMappings(reobfTask, SEARGE, srgFiles[SEARGE])
-                    }
-                } catch (MissingPropertyException ex) {
-                    if (ex.property == "mappingType") {
-                        throw new InvalidUserDataException("Could not determine mapping type for obf task, ensure ForgeGradle up to date.")
-                    } else {
-                        throw ex
-                    }
+        // Closure to allocate generated AP resources once compile task is completed
+        if (tsrgFile.exists()) {
+            this.reobfTasks.each { reobfTask ->
+                reobfTask.handle.doFirst {
+                    project.logger.info "Contributing tsrg mappings ({}) to {} in {}", tsrgFile, reobfTask.name, reobfTask.project
+                    delegate.extraMapping(tsrgFile)
                 }
             }
         }
-
-
-        // Add the refmap to all reobf'd jars
-        this.reobfTasks.each { reobfTask ->
-            reobfTask.jar.getRefMaps().files.add(artefactSpecificRefMap)
-            reobfTask.jar.from(artefactSpecificRefMap)
-        }
-
-    }
-    
-    /**
-     * Callback from <tt>compileTask.doLast</tt> closure, attempts to contribute
-     * mappings of the specified type to the supplied task
-     * 
-     * @param reobfTask a <tt>ReobfTask</tt> instance
-     * @param type Mapping type to add
-     * @param srgFile SRG mapping file to add to the task
-     */
-    @PackageScope void addMappings(ReobfTask reobfTask, ReobfMappingType type, File srgFile) {
-        if (!srgFile.exists()) {
-            project.logger.warn "Unable to contribute {} mappings to {}, the specified file ({}) was not found", type, reobfTask.name, srgFile
-            return    
-        }
-        
-        project.logger.info "Contributing {} ({}) mappings to {} in {}", type, srgFile, reobfTask.name, reobfTask.project
-        reobfTask.taskWrapper.extraFiles(srgFile)
     }
     
     /**
@@ -640,11 +552,11 @@ public class MixinExtension {
      */
     @PackageScope void applyCompilerArgs(JavaCompile compileTask) {
         compileTask.options.compilerArgs += [
-            "-AreobfSrgFile=${this.getReobfSrgFile().canonicalPath}",
-            "-AreobfNotchSrgFile=${this.getReobfNotchSrgFile().canonicalPath}",
-            "-AoutSrgFile=${compileTask.outSrgFile.canonicalPath}",
-            "-AoutNotchSrgFile=${compileTask.outNotchFile.canonicalPath}",
-            "-AoutRefMapFile=${compileTask.refMapFile.canonicalPath}"
+            "-AreobfTsrgFile=${this.mappings.canonicalPath}",
+            "-AoutTsrgFile=${compileTask.outTsrgFile.canonicalPath}",
+            "-AoutRefMapFile=${compileTask.refMapFile.canonicalPath}",
+            "-AmappingTypes=tsrg",
+            "-ApluginVersion=${MixinGradlePlugin.VERSION}"
         ]
         
         if (this.disableTargetValidator) {
@@ -664,25 +576,39 @@ public class MixinExtension {
         }
         
         if (this.defaultObfuscationEnv != null) {
-            compileTask.options.compilerArgs += "-AdefaultObfuscationEnv=${this.defaultObfuscationEnv.toLowerCase()}"
+            compileTask.options.compilerArgs += "-AdefaultObfuscationEnv=${this.defaultObfuscationEnv}"
         }
         
+        if (this.mappingTypes.size() > 0) {
+            compileTask.options.compilerArgs += listToArg("mappingTypes", this.mappingTypes, ",")
+        }
+
         if (this.tokens.size() > 0) {
-            compileTask.options.compilerArgs += this.tokenArgument
+            compileTask.options.compilerArgs += mapToArg("tokens", this.tokens)
         }
         
-        if (this.extraSrgFiles.size() > 0) {
-            compileTask.options.compilerArgs += this.getSrgsArgument("reobfSrgFiles", this.extraSrgFiles)
-        }
-        
-        if (this.extraNotchFiles.size() > 0) {
-            compileTask.options.compilerArgs += this.getSrgsArgument("reobfNotchSrgFiles", this.extraNotchFiles)
+        if (this.extraMappings.size() > 0) {
+            compileTask.options.compilerArgs += listToArg("reobfTsrgFiles", this.extraMappings.collect { file -> project.file(file).toString() })
         }
 
         File importsFile = this.generateImportsFile(compileTask)
         if (importsFile != null) {
             compileTask.options.compilerArgs += "-AdependencyTargetsFile=${importsFile.canonicalPath}"
-        }    
+        }
+    }
+    
+    void importConfig(Object config) {
+        if (config == null) {
+            throw new InvalidUserDataException("Cannot import from null config")
+        }
+        this.importConfigs += config
+    }
+    
+    void importLibrary(Object lib) {
+        if (lib == null) {
+            throw new InvalidUserDataException("Cannot import null library")
+        }
+        this.importLibs += lib
     }
 
     /**
@@ -725,5 +651,14 @@ public class MixinExtension {
         }
         
         return importsFile
+    }
+
+        
+    @PackageScope static String mapToArg(String argName, Map<?, ?> map, String separator = ";") {
+        map.size() < 1 ? "" : "-A${argName}=" + map.collect { token -> token.key << "=" << token.value }.join(separator)
+    }
+    
+    @PackageScope static String listToArg(String argName, List<Object> list, String separator = ";") {
+        list.size() < 1 ? "" : "-A${argName}=${list.join(separator)}"
     }
 }

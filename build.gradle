@@ -26,6 +26,9 @@ sourceCompatibility = '1.6'
 
 repositories {
     mavenCentral()
+    maven {
+        url "https://repo.gradle.org/gradle/libs-releases-local/"
+    }
 }
 
 configurations {
@@ -34,9 +37,19 @@ configurations {
 
 dependencies {
     compile gradleApi()
-    compile 'com.google.guava:guava:17.0'
-    compile 'org.ow2.asm:asm-debug-all:5.0.3'
+//    implementation 'org.codehaus.groovy:groovy-all:2.5.8'
+    compile 'com.google.guava:guava:21.0'
+    compile 'org.ow2.asm:asm-tree:6.2'
     deployerJars 'org.apache.maven.wagon:wagon-ftp:2.7'
+}
+
+eclipse.classpath.file.whenMerged {
+    entries.each {
+        if (it.path.contains('gradle-api') && it.sourcePath == null) {
+            // Source attachment doesn't currently work when using gradleApi() dependency so include manually
+            it.sourcePath = fileReference(file('lib/core-api.zip'))
+        }
+    }
 }
 
 processResources {
@@ -59,12 +72,32 @@ license {
     }
 }
 
-jar.manifest.mainAttributes (
-    "Built-By": System.properties['user.name'],
-    "Created-By": System.properties['java.vm.version'] + " (" + System.properties['java.vm.vendor'] + ")",
-    "Implementation-Title": name,
-    "Implementation-Version": version
-)
+jar {
+    manifest.mainAttributes (
+        "Built-By": System.properties['user.name'],
+        "Created-By": System.properties['java.vm.version'] + " (" + System.properties['java.vm.vendor'] + ")",
+        "Implementation-Title": name,
+        "Implementation-Version": buildVersion
+    )
+}
+
+task signJar() {
+    inputs.files(jar.outputs)
+    outputs.files(jar.outputs)
+    doLast {
+        ant.signjar(
+            alias: project.keyStoreCert,
+            jar: jar.outputs.files[0],
+            keystore: project.keyStorePath,
+            storepass: project.keyStoreSecret,
+            keypass: project.keyStoreSecret,
+            tsaurl: project.timestampAuthority,
+            preservelastmodified: 'true',
+            verbose: true
+        )
+    }
+}
+build.dependsOn(signJar)
 
 task groovydocJar(type: Jar, dependsOn: groovydoc) {
     from groovydoc.destinationDir
@@ -97,8 +130,8 @@ uploadArchives {
 
             if (project.hasProperty("chRepo"))
             {
-                repository(url: project.chRepo) {
-                    authentication(userName: project.chUsername, password: project.chPassword)
+                repository(url: project.spongeRepo) {
+                    authentication(userName: project.spongeUsername, password: project.spongePassword)
                 }
             }
 
