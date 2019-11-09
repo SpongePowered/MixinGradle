@@ -81,7 +81,7 @@ jar {
     )
 }
 
-task signJar() {
+/* task signJar() {
     inputs.files(jar.outputs)
     outputs.files(jar.outputs)
     doLast {
@@ -97,7 +97,7 @@ task signJar() {
         )
     }
 }
-build.dependsOn(signJar)
+build.dependsOn(signJar) */
 
 task groovydocJar(type: Jar, dependsOn: groovydoc) {
     from groovydoc.destinationDir
