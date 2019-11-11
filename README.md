@@ -33,7 +33,7 @@ Please ensure you are using the correct version of MixinGradle for your ForgeGra
 
 | ForgeGradle Version | Mixin Version   | MixinGradle Version To Use |
 | ------------------- | --------------- | -------------------------- |
-| 2.3                 | 0.7.x and below | `0.6-SNAPSHOT`             |
+| 2.3                 | 0.8 and below   | `0.6-SNAPSHOT`             |
 | 3.0                 | 0.8             | `0.7-SNAPSHOT`             |
  
 2. Apply the plugin:
