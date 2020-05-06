@@ -20,7 +20,9 @@ To use **MixinGradle** you *must* be using **[ForgeGradle](https://github.com/Mi
  ```groovy
 buildscript {
         repositories {
-            https://repo.spongepowered.org/maven
+            maven { 
+                url 'https://repo.spongepowered.org/maven'
+            }
         }
         dependencies {
             ...
