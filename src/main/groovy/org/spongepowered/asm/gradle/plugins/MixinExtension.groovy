@@ -25,27 +25,20 @@
 package org.spongepowered.asm.gradle.plugins
 
 import com.google.common.io.Files
-import groovy.lang.MissingPropertyException
 import groovy.transform.PackageScope
 import org.gradle.api.DefaultTask
 import org.gradle.api.InvalidUserDataException
 import org.gradle.api.Project
-import org.gradle.api.Task
 import org.gradle.api.artifacts.Configuration
-import org.gradle.api.artifacts.Dependency
 import org.gradle.api.artifacts.ProjectDependency
 import org.gradle.api.tasks.SourceSet
 import org.gradle.api.tasks.TaskAction
 import org.gradle.api.tasks.bundling.AbstractArchiveTask
 import org.gradle.api.tasks.compile.JavaCompile
-import org.gradle.internal.impldep.bsh.This
 import org.gradle.jvm.tasks.Jar
-import org.spongepowered.asm.gradle.plugins.meta.Import
 import org.spongepowered.asm.gradle.plugins.meta.Imports
 
-import java.util.HashSet
 import java.util.Map.Entry
-import java.io.File
 
 /**
  * Extension object for mixin configuration, actually manages the configuration
@@ -98,6 +91,11 @@ public class MixinExtension {
      * Cached reference to containing project 
      */
     private final Project project
+    
+    /**
+     * Detected gradle major version, used in compatibility checks 
+     */
+    @PackageScope final int majorGradleVersion
     
     /**
      * Until we add some sourcesets, we will assume that the user hasn't
@@ -159,6 +157,14 @@ public class MixinExtension {
     boolean disableOverwriteChecker
     
     /**
+     * Disables the check for the annotation processor dependency on gradle 5
+     * and above. Potential reasons for doing so being that the AP is present
+     * but in a different dep, or the detection has just failed for some reason
+     * and the user wants to override   
+     */
+    boolean disableAnnotationProcessorCheck
+    
+    /**
      * Sets the overwrite checker error level, the default is to raise WARNING
      * however this can be set to ERROR in order to cause missing decorations
      * to be treated as errors 
@@ -207,6 +213,7 @@ public class MixinExtension {
      */
     MixinExtension(Project project) {
         this.project = project
+        this.majorGradleVersion = MixinExtension.detectGradleVersion(project)
         this.init()
     }
     
@@ -241,6 +248,22 @@ public class MixinExtension {
             }
             
             this.applyDefault()
+            
+            if (!this.disableAnnotationProcessorCheck
+                    && (this.majorGradleVersion > 4 || this.majorGradleVersion == 0)
+                    && !proj.configurations['annotationProcessor'].dependencies.find { it.group =~ /spongepowered/ && it.name =~ /mixin/ }) {
+                def message = "was detected but the mixin dependency was not found in the 'annotationProcessor' configuration. To enable the " +
+                    "Mixin AP please include the mixin processor artefact in the 'annotationProcessor' configuration. For example if you are " +
+                    "using mixin dependency 'org.spongepowered:mixin:1.2.3-SNAPSHOT' for 'compile' you should specify the dependency " +
+                    "'org.spongepowered:mixin:1.2.3-SNAPSHOT:processor' in 'annotationProcessor'. If you believe you are seeing this message " +
+                    "in error, you can disable this check via the disableAnnotationProcessorCheck directive."
+                    
+                if (this.majorGradleVersion > 4) {
+                    throw new MixinGradleException("Gradle ${this.majorGradleVersion}.x $message")
+                } else {
+                    project.logger.error "An unrecognised gradle version $message"
+                }
+            }
         }
 
         SourceSet.metaClass.getRefMap = {
@@ -292,7 +315,14 @@ public class MixinExtension {
     }
     
     /**
-     * Directive version of {@link #disableOverwriteChecker}
+     * Directive version of {@link #disableAnnotationProcessorCheck}
+     */
+    void disableAnnotationProcessorCheck() {
+        this.disableAnnotationProcessorCheck = true
+    }
+    
+    /**
+     * Directive version of {@link #overwriteErrorLevel}
      */
     void overwriteErrorLevel(Object errorLevel) {
         this.overwriteErrorLevel = errorLevel
@@ -485,7 +515,7 @@ public class MixinExtension {
         
         // Closure to prepare AP environment before compile task runs
         compileTask.doFirst {
-            if (!this.disableRefMapWarning && refMaps[compileTask.ext.refMap]) {
+            if (!this.disableRefMapWarning && refMaps[compileTask.ext.refMap] && refMaps[compileTask.ext.refMap] != set.name) {
                 project.logger.warn "Potential refmap conflict. Duplicate refmap name {} specified for sourceSet {}, already defined for sourceSet {}",
                     compileTask.ext.refMap, set.name, refMaps[compileTask.ext.refMap]
             } else {
@@ -663,4 +693,9 @@ public class MixinExtension {
     @PackageScope static String listToArg(String argName, List<Object> list, String separator = ";") {
         list.size() < 1 ? "" : "-A${argName}=${list.join(separator)}"
     }
+    
+    private static int detectGradleVersion(Project project) {
+        def strMajorVersion = (project.gradle.gradleVersion =~ /^([0-9]+)\./).findAll()[0][1]
+        return strMajorVersion.isInteger() ? strMajorVersion as Integer : 0
+    } 
 }
