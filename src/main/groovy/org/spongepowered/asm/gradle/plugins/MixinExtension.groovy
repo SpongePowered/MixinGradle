@@ -533,11 +533,13 @@ public class MixinExtension {
         }
 
         // Closure to allocate generated AP resources once compile task is completed
-        if (tsrgFile.exists()) {
-            this.reobfTasks.each { reobfTask ->
-                reobfTask.handle.doFirst {
+        this.reobfTasks.each { reobfTask ->
+            reobfTask.handle.doFirst {
+                if (tsrgFile.exists()) {
                     project.logger.info "Contributing tsrg mappings ({}) to {} in {}", tsrgFile, reobfTask.name, reobfTask.project
                     delegate.extraMapping(tsrgFile)
+                } else {
+                    project.logger.debug "Tsrg file ({}) not found, skipping", tsrgFile
                 }
             }
         }
