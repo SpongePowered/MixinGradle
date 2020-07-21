@@ -214,35 +214,33 @@ public class MixinExtension {
     MixinExtension(Project project) {
         this.project = project
         this.majorGradleVersion = MixinExtension.detectGradleVersion(project)
-        this.init()
+        this.init(project)
     }
     
     /**
      * Set up the project by extending relevant objects and adding the
      * <tt>afterEvaluate</tt> handler
      */
-    private void init() {
-        Project proj = this.project
-        
-        this.project.afterEvaluate {
+    private void init(Project project) {
+        project.afterEvaluate {
             // Gather reobf jars for processing
-            proj.reobf.each { reobfTaskHandle ->
-                this.reobfTasks += new ReobfTask(proj, reobfTaskHandle)
+            project.reobf.each { reobfTaskHandle ->
+                this.reobfTasks += new ReobfTask(project, reobfTaskHandle)
             }
 
             // Search for sourceSets with a refmap property and configure them
-            proj.sourceSets.each { set ->
+            project.sourceSets.each { set ->
                 if (set.ext.has("refMap")) {
                     this.configure(set)
                 }
             }
 
             // Search for upstream projects and add our jars to their target set
-            proj.configurations.compile.allDependencies.withType(ProjectDependency) { upstream ->
+            project.configurations.compile.allDependencies.withType(ProjectDependency) { upstream ->
                 def mixinExt = upstream.dependencyProject.extensions.findByName("mixin")
                 if (mixinExt) {
-                    proj.reobf.each { reobfTaskWrapper ->
-                        mixinExt.reobfTasks += new ReobfTask(proj, reobfTaskWrapper)
+                    project.reobf.each { reobfTaskWrapper ->
+                        mixinExt.reobfTasks += new ReobfTask(project, reobfTaskWrapper)
                     }
                 }
             }
@@ -251,7 +249,7 @@ public class MixinExtension {
             
             if (!this.disableAnnotationProcessorCheck
                     && (this.majorGradleVersion > 4 || this.majorGradleVersion == 0)
-                    && !proj.configurations['annotationProcessor'].dependencies.find { it.group =~ /spongepowered/ && it.name =~ /mixin/ }) {
+                    && !project.configurations['annotationProcessor'].dependencies.find { it.group =~ /spongepowered/ && it.name =~ /mixin/ }) {
                 def message = "was detected but the mixin dependency was not found in the 'annotationProcessor' configuration. To enable the " +
                     "Mixin AP please include the mixin processor artefact in the 'annotationProcessor' configuration. For example if you are " +
                     "using mixin dependency 'org.spongepowered:mixin:1.2.3-SNAPSHOT' for 'compile' you should specify the dependency " +
@@ -276,7 +274,7 @@ public class MixinExtension {
         
         AbstractArchiveTask.metaClass.getRefMaps = {
             if (!delegate.ext.has('refMaps')) {
-                delegate.ext.refMaps = proj.layout.configurableFiles();
+                delegate.ext.refMaps = project.layout.configurableFiles();
             }
             delegate.ext.refMaps
         }
