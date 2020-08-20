@@ -75,3 +75,4 @@ nb-configuration.xml
 *.ipr
 *.iws
 
+/repo/

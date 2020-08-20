@@ -94,11 +94,11 @@ sourceSets {
 ### Building MixinGradle
 **MixinGradle** can of course be built using [Gradle](http://gradle.org/). To perform a build simply execute:
 
-    gradle
+    gradlew build
 
 To add the compiled jar to your local maven repository, run:
 
-    gradle build install
+    gradlew publishToMavenLocal
 
 
 
