@@ -72,8 +72,8 @@ public class MixinGradlePlugin implements Plugin<Project> {
             throw new InvalidUserDataException("Found a 'genSrgs' task on $project, this version of MixinGradle does not support ForgeGradle 2.x.")
         }
 
-        if (!project.extensions.findByName('minecraft')) {
-            throw new InvalidUserDataException("Could not find property 'minecraft' on $project, ensure ForgeGradle is applied.")
+        if (!project.extensions.findByName('minecraft') && !project.extensions.findByName('patcher')) {
+            throw new InvalidUserDataException("Could not find property 'minecraft', or 'patcher' on $project, ensure ForgeGradle is applied.")
         }
     }
     
