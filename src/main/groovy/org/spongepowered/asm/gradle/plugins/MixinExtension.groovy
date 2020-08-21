@@ -174,11 +174,11 @@ public class MixinExtension {
      * view of the mixin AP. 
      */
     boolean disableTargetExport
-	
+    
     /**
      * Disables the part of this plugin that tries to add IDE 
-	 * integration for the AP to eclipse. Useful if something goes wrong, or
-	 * you want to manage that part yourself.
+     * integration for the AP to eclipse. Useful if something goes wrong, or
+     * you want to manage that part yourself.
      */
     boolean disableEclipseAddon
     
@@ -254,10 +254,10 @@ public class MixinExtension {
         } else {
             throw new InvalidUserDataException("Could not find property 'minecraft', or 'patcher' on $project, ensure ForgeGradle is applied.")
         }
-		
-		if (!this.disableEclipseAddon) {
-			MixinEclipse.configureEclipse(this, this.project, this.projectType)
-		}
+        
+        if (!this.disableEclipseAddon) {
+            MixinEclipse.configureEclipse(this, this.project, this.projectType)
+        }
         
         this.init(this.project, this.projectType)
     }
@@ -528,13 +528,13 @@ public class MixinExtension {
         manuallyAdd(set)
     }
     
-	/**
-	 * We need to disable the flag early, because our main after evaluate happens before the one we are adding now.
-	 */
+    /**
+     * We need to disable the flag early, because our main after evaluate happens before the one we are adding now.
+     */
     void manuallyAdd(SourceSet set) {
         // Don't perform default behaviour, a sourceSet has been added manually
         this.applyDefault = false
-		String pType = this.projectType
+        String pType = this.projectType
         project.afterEvaluate {
             this.configure(set, pType)
         }
@@ -635,13 +635,13 @@ public class MixinExtension {
                 jarRefMaps += taskSpecificRefMap
                 jarTask.dependsOn(delegate)
             })
-			if (projectType == 'patcher') { //Patcher's universal jar is built from a filtered jar, so our normal detection doesn't find it.
-				if ('universalJar' == jarTask.name) {
-					project.logger.info "Contributing refmap ({}) to {} in {}", taskSpecificRefMap, jarTask.archiveName, project
-					jarTask.getRefMaps().from(taskSpecificRefMap)
-					jarTask.from(taskSpecificRefMap)
-				}
-			}
+            if (projectType == 'patcher') { //Patcher's universal jar is built from a filtered jar, so our normal detection doesn't find it.
+                if ('universalJar' == jarTask.name) {
+                    project.logger.info "Contributing refmap ({}) to {} in {}", taskSpecificRefMap, jarTask.archiveName, project
+                    jarTask.getRefMaps().from(taskSpecificRefMap)
+                    jarTask.from(taskSpecificRefMap)
+                }
+            }
         }
 
         // Closure to allocate generated AP resources once compile task is completed

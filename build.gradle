@@ -125,37 +125,37 @@ pluginBundle {
 publishing {
     publications {
         maven(MavenPublication) {
-			artifact jar
-			artifact groovydocJar
-			
-			groupId = project.group
-			version = project.version
-			artifactId = project.archivesBaseName
-				
+            artifact jar
+            artifact groovydocJar
+            
+            groupId = project.group
+            version = project.version
+            artifactId = project.archivesBaseName
+                
             pom {
-				name = project.archivesBaseName
-				packaging = 'jar'
-				description = 'MixinGradle'
-				url = 'http://www.spongepowered.org/'
+                name = project.archivesBaseName
+                packaging = 'jar'
+                description = 'MixinGradle'
+                url = 'http://www.spongepowered.org/'
 
-				scm {
-					url = 'https://github.com/SpongePowered/MixinGradle'
-					connection = 'scm:git:git://github.com/SpongePowered/MixinGradle.git'
-					developerConnection = 'scm:git:git@github.com:SpongePowered/MixinGradle.git'
-				}
+                scm {
+                    url = 'https://github.com/SpongePowered/MixinGradle'
+                    connection = 'scm:git:git://github.com/SpongePowered/MixinGradle.git'
+                    developerConnection = 'scm:git:git@github.com:SpongePowered/MixinGradle.git'
+                }
 
-				issueManagement {
-					system = 'GitHub Issues'
-					url = 'https://github.com/SpongePowered/MixinGradle/issues'
-				}
+                issueManagement {
+                    system = 'GitHub Issues'
+                    url = 'https://github.com/SpongePowered/MixinGradle/issues'
+                }
 
-				licenses {
-					license {
-						name = 'MIT license'
-						url = 'http://opensource.org/licenses/MIT'
-						distribution = 'repo'
-					}
-				}
+                licenses {
+                    license {
+                        name = 'MIT license'
+                        url = 'http://opensource.org/licenses/MIT'
+                        distribution = 'repo'
+                    }
+                }
             }
         }
     }
@@ -170,6 +170,6 @@ publishing {
             } else {
                 url 'file://' + rootProject.file('repo').getAbsolutePath()
             }
-		}
-	}
+        }
+    }
 }
