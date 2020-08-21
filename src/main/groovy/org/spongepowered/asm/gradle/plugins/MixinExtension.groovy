@@ -72,8 +72,21 @@ public class MixinExtension {
         
         Set<File> jarRefMaps = []
         
+        /**
+         * Annotation Processor error message, which is logged to the console if the
+         * environment is misconfigured but is elevated to an error condition if any
+         * addRefmapToJar task runs. This stops misconfigured projects from breaking
+         * IDE import process of gradle project but should still result in a fatal
+         * error when building production artefacts.
+         */
+        String apErrorMessage = null
+        
         @TaskAction
         def run() {
+            if (this.apErrorMessage != null) {
+                throw new MixinGradleException(this.apErrorMessage)
+            }
+            
             // Add the refmap to all reobf'd jars
             this.reobfTasks.each { reobfTask ->
                 reobfTask.handle.dependsOn.findAll { it == remappedJar }.each { jar ->
@@ -96,7 +109,7 @@ public class MixinExtension {
      * Detected gradle major version, used in compatibility checks 
      */
     @PackageScope final int majorGradleVersion
-    
+
     /**
      * Until we add some sourcesets, we will assume that the user hasn't
      * configured the plugin in any way (hasn't added a refMap setting on the
@@ -129,6 +142,11 @@ public class MixinExtension {
      * Reobf tasks we will target
      */
     @PackageScope Set<ReobfTask> reobfTasks = []
+    
+    /**
+     * Handles for tasks which add the refmaps to each jar, one per jar
+     */
+    @PackageScope Set<AddRefMapToJarTask> addRefMapToJarTasks = []
     
     /**
      * If a refMap overlap is detected a warning will be output, however there
@@ -250,17 +268,20 @@ public class MixinExtension {
             if (!this.disableAnnotationProcessorCheck
                     && (this.majorGradleVersion > 4 || this.majorGradleVersion == 0)
                     && !project.configurations['annotationProcessor'].dependencies.find { it.group =~ /spongepowered/ && it.name =~ /mixin/ }) {
-                def message = "was detected but the mixin dependency was not found in the 'annotationProcessor' configuration. To enable the " +
+                def message = (this.majorGradleVersion > 4 ? "Gradle ${this.majorGradleVersion} " : "An unrecognised gradle version ") + "was " +
+                    "detected but the mixin dependency was not found in the 'annotationProcessor' configuration. To enable the " +
                     "Mixin AP please include the mixin processor artefact in the 'annotationProcessor' configuration. For example if you are " +
                     "using mixin dependency 'org.spongepowered:mixin:1.2.3-SNAPSHOT' for 'compile' you should specify the dependency " +
                     "'org.spongepowered:mixin:1.2.3-SNAPSHOT:processor' in 'annotationProcessor'. If you believe you are seeing this message " +
                     "in error, you can disable this check via the disableAnnotationProcessorCheck directive."
                     
+                // Only promote the error message to an actual error if we're sure there's a gradle version mismatch 
                 if (this.majorGradleVersion > 4) {
-                    throw new MixinGradleException("Gradle ${this.majorGradleVersion}.x $message")
-                } else {
-                    project.logger.error "An unrecognised gradle version $message"
+                    this.addRefMapToJarTasks.each { it.apErrorMessage = message }
                 }
+                
+                // Always log it to the console though
+                project.logger.error message
             }
         }
 
@@ -551,13 +572,13 @@ public class MixinExtension {
         // added until later) we add one such task for every jar and the task
         // can handle the heavy lifting of figuring out what to contribute
         project.tasks.withType(Jar.class) { jarTask ->
-            project.tasks.maybeCreate("addRefMapTo${jarTask.name.capitalize()}", AddRefMapToJarTask.class).configure {
+            this.addRefMapToJarTasks.add(project.tasks.maybeCreate("addRefMapTo${jarTask.name.capitalize()}", AddRefMapToJarTask.class).configure {
                 dependsOn(compileTask)
                 remappedJar = jarTask
                 reobfTasks = this.reobfTasks
                 jarRefMaps += taskSpecificRefMap
                 jarTask.dependsOn(delegate)
-            }
+            })
         }
 
         // Closure to allocate generated AP resources once compile task is completed
