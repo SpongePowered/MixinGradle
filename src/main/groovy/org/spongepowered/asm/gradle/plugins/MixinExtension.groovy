@@ -174,6 +174,13 @@ public class MixinExtension {
      * view of the mixin AP. 
      */
     boolean disableTargetExport
+	
+    /**
+     * Disables the part of this plugin that tries to add IDE 
+	 * integration for the AP to eclipse. Useful if something goes wrong, or
+	 * you want to manage that part yourself.
+     */
+    boolean disableEclipseAddon
     
     /**
      * Disables the overwrite checking functionality which raises warnings when
@@ -219,7 +226,7 @@ public class MixinExtension {
     /**
      * Additional TSRG mapping files to supply to the annotation processor. LTP.
      */
-    private List<Object> extraMappings = []
+    @PackageScope List<Object> extraMappings = []
     
     /**
      * Configurations to scan for dependencies when running AP
@@ -247,24 +254,27 @@ public class MixinExtension {
         } else {
             throw new InvalidUserDataException("Could not find property 'minecraft', or 'patcher' on $project, ensure ForgeGradle is applied.")
         }
+		
+		if (!this.disableEclipseAddon) {
+			MixinEclipse.configureEclipse(this, this.project, this.projectType)
+		}
         
-        this.init(project)
+        this.init(this.project, this.projectType)
     }
     
     /**
      * Set up the project by extending relevant objects and adding the
      * <tt>afterEvaluate</tt> handler
      */
-    private void init(Project project) {
-        String projType = this.projectType
+    private void init(Project project, String projectType) {
         this.project.afterEvaluate {
             // Gather reobf jars for processing
-            if (projType == 'userdev') {
+            if (projectType == 'userdev') {
                 // ForgeGradle Modder facing plugin, can have multiple reobf tasks.
                 project.reobf.each { reobfTaskHandle ->
                     this.reobfTasks += new ReobfTask(project, reobfTaskHandle)
                 }
-            } else if (projType == 'patcher') {
+            } else if (projectType == 'patcher') {
                 // ForgeGradle Patcher plugin, only has one default reobf task.
                 this.reobfTasks += new ReobfTask(project, project.reobfJar)
             }
@@ -272,7 +282,7 @@ public class MixinExtension {
             // Search for sourceSets with a refmap property and configure them
             project.sourceSets.each { set ->
                 if (set.ext.has("refMap")) {
-                    this.configure(set)
+                    this.configure(set, projectType)
                 }
             }
 
@@ -347,6 +357,13 @@ public class MixinExtension {
      */
     void disableTargetExport() {
         this.disableTargetExport = true
+    }
+    
+    /**
+     * Directive version of {@link #disableEclipseAddon}
+     */
+    void disableEclipseAddon() {
+        this.disableEclipseAddon = true
     }
     
     /**
@@ -453,7 +470,7 @@ public class MixinExtension {
                 if (!set.ext.has("refMap")) {
                     set.ext.refMap = "mixin.refmap.json"
                 }
-                this.configure(set)
+                this.configure(set, this.projectType)
             }
         }
     }
@@ -517,8 +534,9 @@ public class MixinExtension {
     void manuallyAdd(SourceSet set) {
         // Don't perform default behaviour, a sourceSet has been added manually
         this.applyDefault = false
+		String pType = this.projectType
         project.afterEvaluate {
-            this.configure(set)
+            this.configure(set, pType)
         }
     }
     
@@ -528,7 +546,7 @@ public class MixinExtension {
      * 
      * @param set SourceSet to add
      */
-    void configure(SourceSet set) {
+    void configure(SourceSet set, String projectType) {
         // Check whether this sourceSet was already added
         if (!this.sourceSets.add(set)) {
             project.logger.info "Not adding {} to mixin processor, sourceSet already added", set
@@ -591,7 +609,6 @@ public class MixinExtension {
         // jar spec because there may be multiple refmaps with the same source
         // name
         File taskSpecificRefMap = new File(refMapFile.parentFile, compileTask.ext.refMap)
-        String projType = this.projectType
 
         // Closure to rename generated refMap to artefact-specific refmap when
         // compile task is completed
@@ -618,7 +635,7 @@ public class MixinExtension {
                 jarRefMaps += taskSpecificRefMap
                 jarTask.dependsOn(delegate)
             })
-			if (projType == 'patcher') { //Patcher's universal jar is built from a filtered jar, so our normal detection doesn't find it.
+			if (projectType == 'patcher') { //Patcher's universal jar is built from a filtered jar, so our normal detection doesn't find it.
 				if ('universalJar' == jarTask.name) {
 					project.logger.info "Contributing refmap ({}) to {} in {}", taskSpecificRefMap, jarTask.archiveName, project
 					jarTask.getRefMaps().from(taskSpecificRefMap)
@@ -632,9 +649,9 @@ public class MixinExtension {
             reobfTask.handle.doFirst {
                 if (tsrgFile.exists()) {
                     project.logger.info "Contributing tsrg mappings ({}) to {} in {}", tsrgFile, reobfTask.name, reobfTask.project
-                    if (projType == 'userdev') {
+                    if (projectType == 'userdev') {
                         delegate.extraMapping(tsrgFile)
-                    } else if (projType == 'patcher') {
+                    } else if (projectType == 'patcher') {
                         delegate.args += ['--srg-in', tsrgFile.absolutePath]
                     }
                 } else {
