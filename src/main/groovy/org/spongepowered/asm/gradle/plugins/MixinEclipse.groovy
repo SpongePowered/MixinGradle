@@ -54,7 +54,6 @@ public class MixinEclipse {
         eclipseModel.jdt.file.withProperties { it.setProperty('org.eclipse.jdt.core.compiler.processAnnotations', 'enabled') }
         def settings = project.tasks.register('eclipseJdtApt', EclipseJdtAptTask.class) {
             description = 'Creates the Eclipse JDT APT settings file'
-            input = project.file('.settings/org.eclipse.jdt.apt.core.prefs')
             output = project.file('.settings/org.eclipse.jdt.apt.core.prefs')
             mappingsIn = extension.mappings
         }
@@ -87,7 +86,6 @@ public class MixinEclipse {
     }
     
     static class EclipseJdtAptTask extends DefaultTask {
-        @InputFile File input
         @InputFile File mappingsIn
         @Input File refmapOut = project.file("build/${name}/mixins.refmap.json")
         @Input File mappingsOut = project.file("build/${name}/mixins.mappings.tsrg")
