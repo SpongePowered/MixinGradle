@@ -299,22 +299,26 @@ public class MixinExtension {
             this.applyDefault()
             
             if (!this.disableAnnotationProcessorCheck
-                    && (this.majorGradleVersion > 4 || this.majorGradleVersion == 0)
-                    && !project.configurations['annotationProcessor'].dependencies.find { it.group =~ /spongepowered/ && it.name =~ /mixin/ }) {
-                def message = (this.majorGradleVersion > 4 ? "Gradle ${this.majorGradleVersion} " : "An unrecognised gradle version ") + "was " +
-                    "detected but the mixin dependency was not found in the 'annotationProcessor' configuration. To enable the " +
-                    "Mixin AP please include the mixin processor artefact in the 'annotationProcessor' configuration. For example if you are " +
-                    "using mixin dependency 'org.spongepowered:mixin:1.2.3-SNAPSHOT' for 'compile' you should specify the dependency " +
-                    "'org.spongepowered:mixin:1.2.3-SNAPSHOT:processor' in 'annotationProcessor'. If you believe you are seeing this message " +
-                    "in error, you can disable this check via the disableAnnotationProcessorCheck directive."
-                    
-                // Only promote the error message to an actual error if we're sure there's a gradle version mismatch 
-                if (this.majorGradleVersion > 4) {
-                    this.addRefMapToJarTasks.each { it.apErrorMessage = message }
-                }
+                    && (this.majorGradleVersion > 4 || this.majorGradleVersion == 0)) {
                 
-                // Always log it to the console though
-                project.logger.error message
+                def missingAPs = this.findMissingAnnotationProcessors(project)
+                if (missingAPs) {
+                    def missingAPNames = missingAPs.collect { it.annotationProcessorConfigurationName }
+                    def message = (this.majorGradleVersion > 4 ? "Gradle ${this.majorGradleVersion} " : "An unrecognised gradle version ") + "was " +
+                        "detected but the mixin dependency was missing from one or more Annotation Processor configurations: $missingAPNames. To " +
+                        "enable the Mixin AP please include the mixin processor artefact in each Annotation Processor configuration. For example " +
+                        "if you are using mixin dependency 'org.spongepowered:mixin:1.2.3-SNAPSHOT' you should specify the dependency " +
+                        "'org.spongepowered:mixin:1.2.3-SNAPSHOT:processor'. If you believe you are seeing this message in error, you can disable " +
+                        "this check via the disableAnnotationProcessorCheck directive."
+                        
+                    // Only promote the error message to an actual error if we're sure there's a gradle version mismatch 
+                    if (this.majorGradleVersion > 4) {
+                        this.addRefMapToJarTasks.each { it.apErrorMessage = message }
+                    }
+                    
+                    // Always log it to the console though
+                    project.logger.error message
+                }
             }
         }
 
@@ -473,6 +477,24 @@ public class MixinExtension {
                 this.configure(set, this.projectType)
             }
         }
+    }
+    
+    /**
+     * Searches for the annotation processor dependency in all sourceset ap
+     * configurations which have a refmap. Returns true if the AP is found and
+     * false if it is not found in any added configuration. 
+     */
+    @PackageScope Set<SourceSet> findMissingAnnotationProcessors(Project project) {
+        Set<SourceSet> missingAPs = []
+        missingAPs += this.sourceSets.findResults { SourceSet sourceSet ->
+            Closure mixinDepFinder = { it.group =~ /spongepowered/ && it.name =~ /mixin/ }
+            if ((project.configurations[sourceSet.compileConfigurationName].dependencies.find(mixinDepFinder) ||
+                project.configurations[sourceSet.implementationConfigurationName].dependencies.find(mixinDepFinder)) &&
+                !project.configurations[sourceSet.annotationProcessorConfigurationName].dependencies.find(mixinDepFinder)) {
+                sourceSet
+            }
+        }
+        return missingAPs
     }
     
     /**
