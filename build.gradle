@@ -12,7 +12,7 @@ buildscript {
 
 apply plugin: 'groovy'
 apply plugin: 'license'
-apply plugin: 'maven-publish'
+apply plugin: 'maven'
 apply plugin: 'eclipse'
 apply plugin: 'com.gradle.plugin-publish'
 
@@ -122,53 +122,50 @@ pluginBundle {
     }
 }
 
-publishing {
-    publications {
-        maven(MavenPublication) {
-            artifact jar
-            artifact groovydocJar
-            
-            groupId = project.group
-            version = project.version
-            artifactId = project.archivesBaseName
-                
+uploadArchives {
+    repositories {
+
+        mavenDeployer {
+            configuration = configurations.deployerJars
+
+            if (project.hasProperty("chRepo"))
+            {
+                repository(url: project.spongeRepo) {
+                    authentication(userName: project.spongeUsername, password: project.spongePassword)
+                }
+            } else  {
+                repository(url: 'file://' + rootProject.file('repo').getAbsolutePath())
+            }
+
             pom {
-                name = project.archivesBaseName
-                packaging = 'jar'
-                description = 'MixinGradle'
-                url = 'http://www.spongepowered.org/'
+                groupId = project.group
+                version = project.version
+                artifactId = project.archivesBaseName
+                project {
+                    name project.archivesBaseName
+                    packaging 'jar'
+                    description 'MixinGradle'
+                    url 'http://www.spongepowered.org/'
 
-                scm {
-                    url = 'https://github.com/SpongePowered/MixinGradle'
-                    connection = 'scm:git:git://github.com/SpongePowered/MixinGradle.git'
-                    developerConnection = 'scm:git:git@github.com:SpongePowered/MixinGradle.git'
-                }
+                    scm {
+                        url 'https://github.com/SpongePowered/MixinGradle'
+                        connection 'scm:git:git://github.com/SpongePowered/MixinGradle.git'
+                        developerConnection 'scm:git:git@github.com:SpongePowered/MixinGradle.git'
+                    }
 
-                issueManagement {
-                    system = 'GitHub Issues'
-                    url = 'https://github.com/SpongePowered/MixinGradle/issues'
-                }
+                    issueManagement {
+                        system 'GitHub Issues'
+                        url 'https://github.com/SpongePowered/MixinGradle/issues'
+                    }
 
-                licenses {
-                    license {
-                        name = 'MIT license'
-                        url = 'http://opensource.org/licenses/MIT'
-                        distribution = 'repo'
+                    licenses {
+                        license {
+                            name 'MIT license'
+                            url 'http://opensource.org/licenses/MIT'
+                            distribution 'repo'
+                        }
                     }
                 }
-            }
-        }
-    }
-    repositories {
-        maven {
-            if (project.hasProperty('chRepo')) {
-                credentials {
-                    username = project.spongeUsername
-                    password = project.spongePassword
-                }
-                url project.spongeRepo
-            } else {
-                url 'file://' + rootProject.file('repo').getAbsolutePath()
             }
         }
     }
