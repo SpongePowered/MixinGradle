@@ -70,12 +70,13 @@ public class MixinEclipse {
     static class OrderedProperties extends Properties {
         def order = new LinkedHashSet<Object>()
         
-        public Enumeration<Object> keys() {
+        @Override
+        public synchronized Enumeration<Object> keys() {
             return Collections.enumeration(order)
         }
         
         @Override
-        public Object put(Object key, Object value) {
+        public synchronized Object put(Object key, Object value) {
             order.add(key)
             return super.put(key, value)
         }
