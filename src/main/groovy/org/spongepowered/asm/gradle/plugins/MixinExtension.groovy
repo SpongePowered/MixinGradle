@@ -103,14 +103,14 @@ public class MixinExtension {
     /**
      * Cached reference to containing project 
      */
-    private final Project project
+    @PackageScope final Project project
 
     /**
      * ForgeGradle has two major types of projects, with slightly different setups 
-     * 'pathcer' is used for developing Forge itself, and any other project that edits Minecraft's source directly.
+     * 'patcher' is used for developing Forge itself, and any other project that edits Minecraft's source directly.
      * 'userdev' is used by modders who are using Forge or other project based on the patcher plugin.
      */
-    private final String projectType;
+    @PackageScope final String projectType;
     
     /**
      * Detected gradle major version, used in compatibility checks 
@@ -517,9 +517,9 @@ public class MixinExtension {
         try {
             set.getRefMap()
         } catch (e) {
-            throw new InvalidUserDataException(sprintf('No \'refMap\' defined on %s', set))
+            throw new InvalidUserDataException(sprintf('No \'refMap\' or \'ext.refMap\' defined on %s. Call \'add(sourceSet, refMapName)\' instead.', set))
         }
-        manuallyAdd(set)
+        this.manuallyAdd(set)
     }
     
     /**
@@ -532,10 +532,10 @@ public class MixinExtension {
     void add(String set, Object refMapName) {
         SourceSet sourceSet = project.sourceSets.findByName(set)
         if (sourceSet == null) {
-            throw new InvalidUserDataException(sprintf('No \'refMap\' defined on %s', set))
+            throw new InvalidUserDataException(sprintf('No sourceSet \'%s\' was found', set))
         }
         sourceSet.ext.refMap = refMapName
-        manuallyAdd(sourceSet)
+        this.manuallyAdd(sourceSet)
     }
     
     /**
@@ -547,7 +547,7 @@ public class MixinExtension {
      */
     void add(SourceSet set, Object refMapName) {
         set.ext.refMap = refMapName.toString()
-        manuallyAdd(set)
+        this.manuallyAdd(set)
     }
     
     /**
@@ -728,7 +728,7 @@ public class MixinExtension {
         }
         
         if (this.extraMappings.size() > 0) {
-            compileTask.options.compilerArgs += listToArg("reobfTsrgFiles", this.extraMappings.collect { file -> project.file(file).toString() })
+            compileTask.options.compilerArgs += listToArg("reobfTsrgFiles", this.extraMappings.collect { file -> this.project.file(file).toString() })
         }
 
         File importsFile = this.generateImportsFile(compileTask)
