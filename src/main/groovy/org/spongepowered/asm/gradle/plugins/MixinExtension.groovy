@@ -64,6 +64,21 @@ public class MixinExtension {
         }
     }
     
+    static class ArtefactSpecificRefmap extends File {
+        
+        /**
+         * Preserve original refmap path as-specified so that we can use the
+         * correct relative path inside the jar  
+         */
+        File refMap
+        
+        ArtefactSpecificRefmap(File parent, String refMap) {
+            super(parent, refMap)
+            this.refMap = new File(refMap)
+        }
+
+    }
+
     static class AddRefMapToJarTask extends DefaultTask {
         
         Jar remappedJar
@@ -91,9 +106,11 @@ public class MixinExtension {
             this.reobfTasks.each { reobfTask ->
                 reobfTask.handle.dependsOn.findAll { it == remappedJar }.each { jar ->
                     jarRefMaps.each { artefactSpecificRefMap ->
-                        project.logger.info "Contributing refmap ({}) to {} in {}", artefactSpecificRefMap, jar.archiveName, reobfTask.project
+                        project.logger.info "Contributing refmap ({}) to {} in {}", artefactSpecificRefMap.refMap, jar.archiveName, reobfTask.project
                         jar.getRefMaps().from(artefactSpecificRefMap)
-                        jar.from(artefactSpecificRefMap)
+                        jar.from(artefactSpecificRefMap) {
+                            into artefactSpecificRefMap.refMap.parent
+                        }
                     }
                 }
             }
@@ -630,7 +647,7 @@ public class MixinExtension {
         // name ready for inclusion into target jar. We can't use rename in the
         // jar spec because there may be multiple refmaps with the same source
         // name
-        File taskSpecificRefMap = new File(refMapFile.parentFile, compileTask.ext.refMap)
+        File taskSpecificRefMap = new ArtefactSpecificRefmap(refMapFile.parentFile, compileTask.ext.refMap)
 
         // Closure to rename generated refMap to artefact-specific refmap when
         // compile task is completed
@@ -640,6 +657,7 @@ public class MixinExtension {
 
             // Copy the new one if it was successfully generated
             if (refMapFile.exists()) {
+                taskSpecificRefMap.parentFile.mkdirs()
                 Files.copy(refMapFile, taskSpecificRefMap) 
             }
         }
