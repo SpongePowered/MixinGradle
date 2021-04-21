@@ -232,6 +232,12 @@ public class MixinExtension {
     Object reobfSrgFile
     
     /**
+     * Instruction for the annotation processor to suppress informational
+     * messages such as the AP version, etc. 
+     */
+    boolean quiet
+    
+    /**
      * Additional TSRG mapping files to supply to the annotation processor. LTP.
      */
     @PackageScope List<Object> extraMappings = []
@@ -367,6 +373,13 @@ public class MixinExtension {
      */
     void disableAnnotationProcessorCheck() {
         this.disableAnnotationProcessorCheck = true
+    }
+    
+    /**
+     * Directive version of {@link #quiet}
+     */
+    void quiet() {
+        quiet = true
     }
     
     /**
@@ -796,6 +809,10 @@ public class MixinExtension {
         File importsFile = this.generateImportsFile(compileTask)
         if (importsFile != null) {
             compileTask.options.compilerArgs += "-AdependencyTargetsFile=${importsFile.canonicalPath}"
+        }
+        
+        if (this.quiet) {
+            compileTask.options.compilerArgs += '-Aquiet=true'
         }
     }
     
