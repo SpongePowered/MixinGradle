@@ -31,6 +31,7 @@ import org.gradle.api.InvalidUserDataException
 import org.gradle.api.Project
 import org.gradle.api.artifacts.Configuration
 import org.gradle.api.artifacts.ProjectDependency
+import org.gradle.api.internal.artifacts.dependencies.DefaultExternalModuleDependency
 import org.gradle.api.tasks.SourceSet
 import org.gradle.api.tasks.TaskAction
 import org.gradle.api.tasks.bundling.AbstractArchiveTask
@@ -87,21 +88,8 @@ public class MixinExtension {
         
         Set<File> jarRefMaps = []
         
-        /**
-         * Annotation Processor error message, which is logged to the console if the
-         * environment is misconfigured but is elevated to an error condition if any
-         * addRefmapToJar task runs. This stops misconfigured projects from breaking
-         * IDE import process of gradle project but should still result in a fatal
-         * error when building production artefacts.
-         */
-        String apErrorMessage = null
-        
         @TaskAction
         def run() {
-            if (this.apErrorMessage != null) {
-                throw new MixinGradleException(this.apErrorMessage)
-            }
-            
             // Add the refmap to all reobf'd jars
             this.reobfTasks.each { reobfTask ->
                 reobfTask.handle.dependsOn.findAll { it == remappedJar }.each { jar ->
@@ -262,7 +250,7 @@ public class MixinExtension {
      */
     MixinExtension(Project project) {
         this.project = project
-        this.majorGradleVersion = MixinExtension.detectGradleVersion(project)
+        this.majorGradleVersion = MixinExtension.detectGradleMajorVersion(project)
         
         if (project.extensions.findByName('minecraft')) {
             this.projectType = 'userdev'
@@ -314,29 +302,6 @@ public class MixinExtension {
             }
             
             this.applyDefault()
-            
-            if (!this.disableAnnotationProcessorCheck
-                    && (this.majorGradleVersion > 4 || this.majorGradleVersion == 0)) {
-                
-                def missingAPs = this.findMissingAnnotationProcessors(project)
-                if (missingAPs) {
-                    def missingAPNames = missingAPs.collect { it.annotationProcessorConfigurationName }
-                    def message = (this.majorGradleVersion > 4 ? "Gradle ${this.majorGradleVersion} " : "An unrecognised gradle version ") + "was " +
-                        "detected but the mixin dependency was missing from one or more Annotation Processor configurations: $missingAPNames. To " +
-                        "enable the Mixin AP please include the mixin processor artefact in each Annotation Processor configuration. For example " +
-                        "if you are using mixin dependency 'org.spongepowered:mixin:1.2.3-SNAPSHOT' you should specify the dependency " +
-                        "'org.spongepowered:mixin:1.2.3-SNAPSHOT:processor'. If you believe you are seeing this message in error, you can disable " +
-                        "this check via the disableAnnotationProcessorCheck directive."
-                        
-                    // Only promote the error message to an actual error if we're sure there's a gradle version mismatch 
-                    if (this.majorGradleVersion > 4) {
-                        this.addRefMapToJarTasks.each { it.apErrorMessage = message }
-                    }
-                    
-                    // Always log it to the console though
-                    project.logger.error message
-                }
-            }
         }
 
         SourceSet.metaClass.getRefMap = {
@@ -497,6 +462,44 @@ public class MixinExtension {
     }
     
     /**
+     * Searches the compile configuration of each SourceSet that has been
+     * registered via add() looking for the mixin dependency. If the mixin
+     * dependency is found and the current gradle version is 5 or higher then
+     * check that the Annotation Processor artefact has been added to the
+     * corresponding annotationProcessor configuration for the SourceSet and
+     * raise an error if the AP was not found.
+     * 
+     * <p>This is necessary because in previous versions of gradle, APs in
+     * compile dependencies were automatically added, however since gradle 5
+     * they must be explicitly specified but knowing this assumes that all end
+     * users read the gradle upgrade notes when changing versions, which is not
+     * realistically the case. So thanks gradle.</p> 
+     */
+    @PackageScope void checkForAnnotationProcessors() {
+        if (this.disableAnnotationProcessorCheck || (this.majorGradleVersion < 5 && this.majorGradleVersion > 0)) {
+            return
+        }
+            
+        def missingAPs = this.findMissingAnnotationProcessors(project)
+        if (missingAPs) {
+            def missingAPNames = missingAPs.collect { it.annotationProcessorConfigurationName }
+            def message = (this.majorGradleVersion > 4 ? "Gradle ${this.majorGradleVersion} " : "An unrecognised gradle version ") + "was " +
+                "detected but the mixin dependency was missing from one or more Annotation Processor configurations: $missingAPNames. To " +
+                "enable the Mixin AP please include the mixin processor artefact in each Annotation Processor configuration. For example " +
+                "if you are using mixin dependency 'org.spongepowered:mixin:0.1.2-SNAPSHOT' you should specify the dependency " +
+                "'org.spongepowered:mixin:0.1.2-SNAPSHOT:processor'. If you believe you are seeing this message in error, you can disable " +
+                "this check via the disableAnnotationProcessorCheck() directive."
+                
+            // Only promote the error message to an actual error if we're sure there's a gradle version mismatch
+            if (this.majorGradleVersion >= 5) {
+                throw new MixinGradleException(message)
+            } else {
+                project.logger.error message
+            }
+        }
+    }
+    
+    /**
      * Searches for the annotation processor dependency in all sourceset ap
      * configurations which have a refmap. Returns true if the AP is found and
      * false if it is not found in any added configuration. 
@@ -504,14 +507,26 @@ public class MixinExtension {
     @PackageScope Set<SourceSet> findMissingAnnotationProcessors(Project project) {
         Set<SourceSet> missingAPs = []
         missingAPs += this.sourceSets.findResults { SourceSet sourceSet ->
-            Closure mixinDepFinder = { it.group =~ /spongepowered/ && it.name =~ /mixin/ }
-            if ((project.configurations[sourceSet.compileConfigurationName].dependencies.find(mixinDepFinder) ||
-                project.configurations[sourceSet.implementationConfigurationName].dependencies.find(mixinDepFinder)) &&
-                !project.configurations[sourceSet.annotationProcessorConfigurationName].dependencies.find(mixinDepFinder)) {
+            sourceSet.ext.mixinDependency = this.findMixinDependency(sourceSet.compileConfigurationName) ?: this.findMixinDependency(sourceSet.implementationConfigurationName)
+            if (sourceSet.ext.mixinDependency && !this.findMixinDependency(sourceSet.annotationProcessorConfigurationName)) {
                 sourceSet
             }
         }
         return missingAPs
+    }
+    
+    /**
+     * Checks whether a configuration contains any mixin dependency in its
+     * explicit or resolved dependency artefacts
+     * 
+     * @param configurationName Configuration name to check
+     * @return true if the configuration contains a mixin dependency
+     */
+    @PackageScope def findMixinDependency(String configurationName) {
+        def configuration = project.configurations[configurationName]
+        return configuration.canBeResolved
+            ? configuration.resolvedConfiguration.resolvedArtifacts.find { it.id =~ /:mixin:/ }
+            : configuration.allDependencies.find { it.group =~ /spongepowered/ && it.name =~ /mixin/ }
     }
     
     /**
@@ -669,6 +684,9 @@ public class MixinExtension {
         // can handle the heavy lifting of figuring out what to contribute
         project.tasks.withType(Jar.class) { jarTask ->
             this.addRefMapToJarTasks.add(project.tasks.maybeCreate("addRefMapTo${jarTask.name.capitalize()}", AddRefMapToJarTask.class).configure {
+                doFirst {
+                    this.checkForAnnotationProcessors()
+                }
                 dependsOn(compileTask)
                 remappedJar = jarTask
                 reobfTasks = this.reobfTasks
@@ -820,7 +838,7 @@ public class MixinExtension {
         list.size() < 1 ? "" : "-A${argName}=${list.join(separator)}"
     }
     
-    private static int detectGradleVersion(Project project) {
+    private static int detectGradleMajorVersion(Project project) {
         def strMajorVersion = (project.gradle.gradleVersion =~ /^([0-9]+)\./).findAll()[0][1]
         return strMajorVersion.isInteger() ? strMajorVersion as Integer : 0
     } 
