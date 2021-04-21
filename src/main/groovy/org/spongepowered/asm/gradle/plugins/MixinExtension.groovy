@@ -30,13 +30,16 @@ import org.gradle.api.DefaultTask
 import org.gradle.api.InvalidUserDataException
 import org.gradle.api.Project
 import org.gradle.api.artifacts.Configuration
+import org.gradle.api.artifacts.Dependency
 import org.gradle.api.artifacts.ProjectDependency
+import org.gradle.api.artifacts.ResolvedArtifact
 import org.gradle.api.internal.artifacts.dependencies.DefaultExternalModuleDependency
 import org.gradle.api.tasks.SourceSet
 import org.gradle.api.tasks.TaskAction
 import org.gradle.api.tasks.bundling.AbstractArchiveTask
 import org.gradle.api.tasks.compile.JavaCompile
 import org.gradle.jvm.tasks.Jar
+import org.gradle.util.VersionNumber
 import org.spongepowered.asm.gradle.plugins.meta.Imports
 
 import java.util.Map.Entry
@@ -480,7 +483,7 @@ public class MixinExtension {
             return
         }
             
-        def missingAPs = this.findMissingAnnotationProcessors(project)
+        def missingAPs = this.findMissingAnnotationProcessors()
         if (missingAPs) {
             def missingAPNames = missingAPs.collect { it.annotationProcessorConfigurationName }
             def message = (this.majorGradleVersion > 4 ? "Gradle ${this.majorGradleVersion} " : "An unrecognised gradle version ") + "was " +
@@ -494,7 +497,7 @@ public class MixinExtension {
             if (this.majorGradleVersion >= 5) {
                 throw new MixinGradleException(message)
             } else {
-                project.logger.error message
+                this.project.logger.error message
             }
         }
     }
@@ -504,12 +507,21 @@ public class MixinExtension {
      * configurations which have a refmap. Returns true if the AP is found and
      * false if it is not found in any added configuration. 
      */
-    @PackageScope Set<SourceSet> findMissingAnnotationProcessors(Project project) {
+    @PackageScope Set<SourceSet> findMissingAnnotationProcessors() {
         Set<SourceSet> missingAPs = []
         missingAPs += this.sourceSets.findResults { SourceSet sourceSet ->
             sourceSet.ext.mixinDependency = this.findMixinDependency(sourceSet.compileConfigurationName) ?: this.findMixinDependency(sourceSet.implementationConfigurationName)
-            if (sourceSet.ext.mixinDependency && !this.findMixinDependency(sourceSet.annotationProcessorConfigurationName)) {
-                sourceSet
+            if (sourceSet.ext.mixinDependency) {
+                sourceSet.ext.apDependency = this.findMixinDependency(sourceSet.annotationProcessorConfigurationName)
+                if (sourceSet.ext.apDependency) {
+                    VersionNumber mainVersion = this.getDependencyVersion(sourceSet.ext.mixinDependency)
+                    VersionNumber apVersion = this.getDependencyVersion(sourceSet.ext.apDependency)
+                    if (mainVersion > apVersion) {
+                        this.project.logger.warn "Mixin AP version ($apVersion) in configuration '${sourceSet.annotationProcessorConfigurationName}' is older than compile version ($mainVersion)"
+                    }
+                } else {
+                    return sourceSet
+                }
             }
         }
         return missingAPs
@@ -527,6 +539,20 @@ public class MixinExtension {
         return configuration.canBeResolved
             ? configuration.resolvedConfiguration.resolvedArtifacts.find { it.id =~ /:mixin:/ }
             : configuration.allDependencies.find { it.group =~ /spongepowered/ && it.name =~ /mixin/ }
+    }
+    
+    /**
+     * Detected dependencies might be a resolved artefact or a declared
+     * dependency (depending on where we are in the build lifecycle). This
+     * method abstracts parsing a dependency version from either supported
+     * object type.
+     */
+    @PackageScope VersionNumber getDependencyVersion(def dependency) {
+        if (dependency instanceof ResolvedArtifact) {
+            return VersionNumber.parse(dependency.moduleVersion.id.version)
+        } else if (dependency instanceof Dependency) {
+            return VersionNumber.parse(dependency.version)
+        }
     }
     
     /**
