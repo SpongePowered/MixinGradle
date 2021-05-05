@@ -21,7 +21,7 @@ To use **MixinGradle** you *must* be using **[ForgeGradle](https://github.com/Mi
 buildscript {
         repositories {
             maven { 
-                url 'https://repo.spongepowered.org/maven'
+                url 'https://repo.spongepowered.org/repository/maven-public'
             }
         }
         dependencies {
