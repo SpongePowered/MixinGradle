@@ -1,20 +1,11 @@
-buildscript {
-    repositories {
-        maven {
-            url 'https://plugins.gradle.org/m2/'
-        }
-    }
-    dependencies {
-        classpath 'nl.javadude.gradle.plugins:license-gradle-plugin:0.11.0'
-        classpath 'com.gradle.publish:plugin-publish-plugin:0.9.1'
-    }
+plugins {
+    id 'com.gradle.plugin-publish' version '0.15.0'
+    id 'com.github.hierynomus.license' version '0.16.1'
 }
 
 apply plugin: 'groovy'
-apply plugin: 'license'
-apply plugin: 'maven'
+apply plugin: 'maven-publish'
 apply plugin: 'eclipse'
-apply plugin: 'com.gradle.plugin-publish'
 
 defaultTasks 'licenseFormat', 'build'
 
@@ -101,7 +92,7 @@ build.dependsOn(signJar) */
 
 task groovydocJar(type: Jar, dependsOn: groovydoc) {
     from groovydoc.destinationDir
-    classifier = 'groovydoc'
+    archiveClassifier.set('groovydoc')
 }
 
 artifacts {
@@ -122,49 +113,54 @@ pluginBundle {
     }
 }
 
-uploadArchives {
-    repositories {
-
-        mavenDeployer {
-            configuration = configurations.deployerJars
-
-            if (project.hasProperty("spongeRepo")) {
-                repository(url: project.spongeRepo) {
-                    authentication(userName: project.spongeUsername, password: project.spongePassword)
-                }
-            } else  {
-                repository(url: 'file://' + rootProject.file('repo').getAbsolutePath())
-            }
+publishing {
+    publications {
+        pluginMaven(MavenPublication) {
+            groupId = project.group
+            version = project.version
+            artifactId = project.archivesBaseName
+            from components.java
 
             pom {
-                groupId = project.group
-                version = project.version
-                artifactId = project.archivesBaseName
-                project {
-                    name project.archivesBaseName
-                    packaging 'jar'
-                    description 'MixinGradle'
-                    url 'http://www.spongepowered.org/'
+                name = project.archivesBaseName
+                packaging = 'jar'
+                description = 'MixinGradle'
+                url = 'https://www.spongepowered.org/'
 
-                    scm {
-                        url 'https://github.com/SpongePowered/MixinGradle'
-                        connection 'scm:git:git://github.com/SpongePowered/MixinGradle.git'
-                        developerConnection 'scm:git:git@github.com:SpongePowered/MixinGradle.git'
-                    }
+                scm {
+                    url = 'https://github.com/SpongePowered/MixinGradle'
+                    connection = 'scm:git:git://github.com/SpongePowered/MixinGradle.git'
+                    developerConnection = 'scm:git:git@github.com:SpongePowered/MixinGradle.git'
+                }
 
-                    issueManagement {
-                        system 'GitHub Issues'
-                        url 'https://github.com/SpongePowered/MixinGradle/issues'
-                    }
+                issueManagement {
+                    system = 'GitHub Issues'
+                    url = 'https://github.com/SpongePowered/MixinGradle/issues'
+                }
 
-                    licenses {
-                        license {
-                            name 'MIT license'
-                            url 'http://opensource.org/licenses/MIT'
-                            distribution 'repo'
-                        }
+                licenses {
+                    license {
+                        name = 'MIT license'
+                        url = 'https://opensource.org/licenses/MIT'
+                        distribution = 'repo'
                     }
                 }
+            }
+        }
+    }
+    repositories {
+        maven {
+            if (project.hasProperty("spongeRepo")) {
+                url project.spongeRepo
+                authentication {
+                    basic(BasicAuthentication)
+                }
+                credentials {
+                    username = project.spongeUsername
+                    password = project.spongePassword
+                }
+            } else {
+                url = 'file://' + rootProject.file('repo').getAbsolutePath()
             }
         }
     }

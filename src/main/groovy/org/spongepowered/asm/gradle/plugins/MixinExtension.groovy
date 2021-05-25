@@ -33,7 +33,8 @@ import org.gradle.api.artifacts.Configuration
 import org.gradle.api.artifacts.Dependency
 import org.gradle.api.artifacts.ProjectDependency
 import org.gradle.api.artifacts.ResolvedArtifact
-import org.gradle.api.internal.artifacts.dependencies.DefaultExternalModuleDependency
+import org.gradle.api.tasks.Input
+import org.gradle.api.tasks.InputFiles
 import org.gradle.api.tasks.SourceSet
 import org.gradle.api.tasks.TaskAction
 import org.gradle.api.tasks.bundling.AbstractArchiveTask
@@ -84,11 +85,14 @@ public class MixinExtension {
     }
 
     static class AddRefMapToJarTask extends DefaultTask {
-        
+
+        @Input
         Jar remappedJar
-        
+
+        @Input
         Set<ReobfTask> reobfTasks
-        
+
+        @InputFiles
         Set<File> jarRefMaps = []
         
         @TaskAction
@@ -301,7 +305,7 @@ public class MixinExtension {
             }
 
             // Search for upstream projects and add our jars to their target set
-            project.configurations.compile.allDependencies.withType(ProjectDependency) { upstream ->
+            project.configurations.implementation.allDependencies.withType(ProjectDependency) { upstream ->
                 def mixinExt = upstream.dependencyProject.extensions.findByName("mixin")
                 if (mixinExt) {
                     project.reobf.each { reobfTaskWrapper ->
@@ -323,7 +327,7 @@ public class MixinExtension {
         
         AbstractArchiveTask.metaClass.getRefMaps = {
             if (!delegate.ext.has('refMaps')) {
-                delegate.ext.refMaps = project.layout.configurableFiles();
+                delegate.ext.refMaps = project.objects.fileCollection();
             }
             delegate.ext.refMaps
         }
@@ -523,7 +527,7 @@ public class MixinExtension {
     @PackageScope Set<SourceSet> findMissingAnnotationProcessors() {
         Set<SourceSet> missingAPs = []
         missingAPs += this.sourceSets.findResults { SourceSet sourceSet ->
-            sourceSet.ext.mixinDependency = this.findMixinDependency(sourceSet.compileConfigurationName) ?: this.findMixinDependency(sourceSet.implementationConfigurationName)
+            sourceSet.ext.mixinDependency = this.findMixinDependency(sourceSet.implementationConfigurationName)
             if (sourceSet.ext.mixinDependency) {
                 sourceSet.ext.apDependency = this.findMixinDependency(sourceSet.annotationProcessorConfigurationName)
                 if (sourceSet.ext.apDependency) {
