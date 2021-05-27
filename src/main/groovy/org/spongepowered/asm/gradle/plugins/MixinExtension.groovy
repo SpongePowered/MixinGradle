@@ -327,7 +327,7 @@ public class MixinExtension {
         
         AbstractArchiveTask.metaClass.getRefMaps = {
             if (!delegate.ext.has('refMaps')) {
-                delegate.ext.refMaps = project.objects.fileCollection();
+                delegate.ext.refMaps = project.objects.fileCollection()
             }
             delegate.ext.refMaps
         }
