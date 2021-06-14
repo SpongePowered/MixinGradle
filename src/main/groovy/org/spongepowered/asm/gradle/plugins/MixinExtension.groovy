@@ -305,7 +305,8 @@ public class MixinExtension {
             }
 
             // Search for upstream projects and add our jars to their target set
-            project.configurations.implementation.allDependencies.withType(ProjectDependency) { upstream ->
+            def configuration = majorGradleVersion >= 7 ? project.configurations.implementation : project.configurations.compile
+            configuration.allDependencies.withType(ProjectDependency) { upstream ->
                 def mixinExt = upstream.dependencyProject.extensions.findByName("mixin")
                 if (mixinExt) {
                     project.reobf.each { reobfTaskWrapper ->
@@ -327,7 +328,7 @@ public class MixinExtension {
         
         AbstractArchiveTask.metaClass.getRefMaps = {
             if (!delegate.ext.has('refMaps')) {
-                delegate.ext.refMaps = project.objects.fileCollection()
+                delegate.ext.refMaps = majorGradleVersion >= 7 ? project.objects.fileCollection() : project.layout.configurableFiles()
             }
             delegate.ext.refMaps
         }
@@ -527,7 +528,9 @@ public class MixinExtension {
     @PackageScope Set<SourceSet> findMissingAnnotationProcessors() {
         Set<SourceSet> missingAPs = []
         missingAPs += this.sourceSets.findResults { SourceSet sourceSet ->
-            sourceSet.ext.mixinDependency = this.findMixinDependency(sourceSet.implementationConfigurationName)
+            sourceSet.ext.mixinDependency = majorGradleVersion >= 7
+                    ? this.findMixinDependency(sourceSet.implementationConfigurationName)
+                    : (this.findMixinDependency(sourceSet.compileConfigurationName) ?: this.findMixinDependency(sourceSet.implementationConfigurationName))
             if (sourceSet.ext.mixinDependency) {
                 sourceSet.ext.apDependency = this.findMixinDependency(sourceSet.annotationProcessorConfigurationName)
                 if (sourceSet.ext.apDependency) {
