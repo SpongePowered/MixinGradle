@@ -128,6 +128,12 @@ public class MixinExtension {
      * Detected gradle major version, used in compatibility checks 
      */
     @PackageScope final int majorGradleVersion
+    
+    /**
+     * Version number to include in error message when complaining about missing
+     * annotation processor
+     */
+    @PackageScope VersionNumber mixinVersionForErrors = null
 
     /**
      * Until we add some sourcesets, we will assume that the user hasn't
@@ -503,13 +509,17 @@ public class MixinExtension {
             
         def missingAPs = this.findMissingAnnotationProcessors()
         if (missingAPs) {
+            def gradleVersion = this.majorGradleVersion > 4 ? "Gradle ${this.majorGradleVersion} " : "An unrecognised gradle version "
             def missingAPNames = missingAPs.collect { it.annotationProcessorConfigurationName }
-            def message = (this.majorGradleVersion > 4 ? "Gradle ${this.majorGradleVersion} " : "An unrecognised gradle version ") + "was " +
-                "detected but the mixin dependency was missing from one or more Annotation Processor configurations: $missingAPNames. To " +
-                "enable the Mixin AP please include the mixin processor artefact in each Annotation Processor configuration. For example " +
-                "if you are using mixin dependency 'org.spongepowered:mixin:0.1.2-SNAPSHOT' you should specify the dependency " +
-                "'org.spongepowered:mixin:0.1.2-SNAPSHOT:processor'. If you believe you are seeing this message in error, you can disable " +
-                "this check via the disableAnnotationProcessorCheck() directive."
+            def addAPName = missingAPNames.size() > 1 ? '<configurationName>' : missingAPNames[0]
+            def eachOfThese = missingAPNames.size() > 1 ? " where <configurationName> is each of $missingAPNames." : ''
+            def mixinVersion = this.mixinVersionForErrors ?: '0.1.2-SNAPSHOT' 
+            def message = "$gradleVersion was detected but the mixin dependency was missing from one or more Annotation Processor " +
+                "configurations: $missingAPNames. To enable the Mixin AP please include the mixin processor artefact in each Annotation " +
+                "Processor configuration. For example if you are using mixin dependency 'org.spongepowered:mixin:$mixinVersion' you " + 
+                "should specify: dependencies { $addAPName 'org.spongepowered:mixin:$mixinVersion:processor' }$eachOfThese. If you " +
+                "believe you are seeing this message in error, you can disable this check via by adding disableAnnotationProcessorCheck() " +
+                "to your mixin { } block."
                 
             // Only promote the error message to an actual error if we're sure there's a gradle version mismatch
             if (this.majorGradleVersion >= 5) {
@@ -532,9 +542,12 @@ public class MixinExtension {
                     ? this.findMixinDependency(sourceSet.implementationConfigurationName)
                     : (this.findMixinDependency(sourceSet.compileConfigurationName) ?: this.findMixinDependency(sourceSet.implementationConfigurationName))
             if (sourceSet.ext.mixinDependency) {
+                VersionNumber mainVersion = this.getDependencyVersion(sourceSet.ext.mixinDependency)
+                if (mainVersion > this.mixinVersionForErrors) {
+                    this.mixinVersionForErrors = mainVersion
+                } 
                 sourceSet.ext.apDependency = this.findMixinDependency(sourceSet.annotationProcessorConfigurationName)
                 if (sourceSet.ext.apDependency) {
-                    VersionNumber mainVersion = this.getDependencyVersion(sourceSet.ext.mixinDependency)
                     VersionNumber apVersion = this.getDependencyVersion(sourceSet.ext.apDependency)
                     if (mainVersion > apVersion) {
                         this.project.logger.warn "Mixin AP version ($apVersion) in configuration '${sourceSet.annotationProcessorConfigurationName}' is older than compile version ($mainVersion)"
