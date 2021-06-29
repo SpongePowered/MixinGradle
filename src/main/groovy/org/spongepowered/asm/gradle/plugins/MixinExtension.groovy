@@ -33,6 +33,7 @@ import org.gradle.api.artifacts.Configuration
 import org.gradle.api.artifacts.Dependency
 import org.gradle.api.artifacts.ProjectDependency
 import org.gradle.api.artifacts.ResolvedArtifact
+import org.gradle.api.file.ConfigurableFileCollection
 import org.gradle.api.tasks.Input
 import org.gradle.api.tasks.InputFiles
 import org.gradle.api.tasks.SourceSet
@@ -763,6 +764,24 @@ public class MixinExtension {
 
         // Closure to allocate generated AP resources once compile task is completed
         this.reobfTasks.each { reobfTask ->
+            // ForgeGradle 5 uses Gradle properties and drops the shortcut configuration methods.
+            // Furthermore, Gradle freezes properties automatically when a task starts executing.
+            // To support the previous behavior of adding the TSRG file to the extraMappings only if it exists,
+            // a filtered file collection is used and added to the reobfTask at configuration time.
+            if (projectType == 'userdev') {
+                def extraMappings = reobfTask.handle.properties.extraMappings
+                if (extraMappings instanceof ConfigurableFileCollection) {
+                    extraMappings.from(project.files(tsrgFile).filter { it.exists() })
+                    // Maintain the info-logging and print the message if the TSRG file is actually used.
+                    reobfTask.handle.doFirst {
+                        if (delegate.extraMappings.contains(tsrgFile)) {
+                            project.logger.info "Contributing tsrg mappings ({}) to {} in {}", tsrgFile, reobfTask.name, reobfTask.project
+                        }
+                    }
+                    return
+                }
+            }
+
             reobfTask.handle.doFirst {
                 if (tsrgFile.exists()) {
                     project.logger.info "Contributing tsrg mappings ({}) to {} in {}", tsrgFile, reobfTask.name, reobfTask.project
