@@ -33,6 +33,7 @@ import org.gradle.api.artifacts.Configuration
 import org.gradle.api.artifacts.Dependency
 import org.gradle.api.artifacts.ProjectDependency
 import org.gradle.api.artifacts.ResolvedArtifact
+import org.gradle.api.file.ConfigurableFileCollection
 import org.gradle.api.tasks.Input
 import org.gradle.api.tasks.InputFiles
 import org.gradle.api.tasks.SourceSet
@@ -99,7 +100,20 @@ public class MixinExtension {
         def run() {
             // Add the refmap to all reobf'd jars
             this.reobfTasks.each { reobfTask ->
-                reobfTask.handle.dependsOn.findAll { it == remappedJar }.each { jar ->
+                def jarTasks = reobfTask.handle.dependsOn.findAll { it == remappedJar }.toSet()
+                // ForgeGradle 5 uses a mapped task output provider instead of explicitly depending on the jar task.
+                // So, we need to find that task here.
+                try {
+                    if (reobfTask.handle.input instanceof org.gradle.api.internal.provider.ValueSupplier) {
+                        reobfTask.handle.input.producer.visitProducerTasks {
+                            if (it == remappedJar)
+                                jarTasks.add it
+                        }
+                    }
+                } catch (Throwable e) {
+                    // Swallow any issues, since ValueSupplier doesn't exist on Gradle 5 and lower
+                }
+                jarTasks.each { jar ->
                     jarRefMaps.each { artefactSpecificRefMap ->
                         project.logger.info "Contributing refmap ({}) to {} in {}", artefactSpecificRefMap.refMap, jar.archiveName, reobfTask.project
                         jar.getRefMaps().from(artefactSpecificRefMap)
@@ -763,16 +777,27 @@ public class MixinExtension {
 
         // Closure to allocate generated AP resources once compile task is completed
         this.reobfTasks.each { reobfTask ->
-            reobfTask.handle.doFirst {
-                if (tsrgFile.exists()) {
-                    project.logger.info "Contributing tsrg mappings ({}) to {} in {}", tsrgFile, reobfTask.name, reobfTask.project
-                    if (projectType == 'userdev') {
-                        delegate.extraMapping(tsrgFile)
-                    } else if (projectType == 'patcher') {
-                        delegate.args += ['--srg-in', tsrgFile.absolutePath]
+            // We can't use doFirst on the handle task here in ForgeGradle 5, so we instead use a configure task.
+            // This is because ForgeGradle 5 uses a ConfigurableFileCollection, and Gradle finalizes properties on task start.
+            // Using doFirst inside the configure task works fine.
+            reobfTask.handle.dependsOn project.tasks.create("configureReobfTaskFor${reobfTask.handle.name.capitalize()}") {
+                outputs.upToDateWhen { false }
+                doFirst {
+                    def extraMappings = reobfTask.handle.properties.extraMappings
+                    if (tsrgFile.exists()) {
+                        project.logger.info "Contributing tsrg mappings ({}) to {} in {}", tsrgFile, reobfTask.name, reobfTask.project
+                        if (projectType == 'userdev') {
+                            if (extraMappings instanceof ConfigurableFileCollection) {
+                                extraMappings.from(tsrgFile)
+                            } else {
+                                reobfTask.handle.extraMapping(tsrgFile)
+                            }
+                        } else if (projectType == 'patcher') {
+                            delegate.args += ['--srg-in', tsrgFile.absolutePath]
+                        }
+                    } else {
+                        project.logger.debug "Tsrg file ({}) not found, skipping", tsrgFile
                     }
-                } else {
-                    project.logger.debug "Tsrg file ({}) not found, skipping", tsrgFile
                 }
             }
         }
