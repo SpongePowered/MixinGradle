@@ -29,12 +29,16 @@ import groovy.transform.PackageScope
 import org.gradle.api.DefaultTask
 import org.gradle.api.InvalidUserDataException
 import org.gradle.api.Project
+import org.gradle.api.Task
 import org.gradle.api.artifacts.Configuration
 import org.gradle.api.artifacts.Dependency
 import org.gradle.api.artifacts.ProjectDependency
 import org.gradle.api.artifacts.ResolvedArtifact
+import org.gradle.api.file.ConfigurableFileCollection
 import org.gradle.api.tasks.Input
+import org.gradle.api.tasks.InputFile
 import org.gradle.api.tasks.InputFiles
+import org.gradle.api.tasks.Internal
 import org.gradle.api.tasks.SourceSet
 import org.gradle.api.tasks.TaskAction
 import org.gradle.api.tasks.bundling.AbstractArchiveTask
@@ -52,8 +56,10 @@ import java.util.Map.Entry
 public class MixinExtension {
     
     static class ReobfTask {
+
         final Project project
         final Object handle
+        final ConfigureReobfTask reobfConfigurationTask
         
         ReobfTask(Project project, Object handle) {
             this.project = project
@@ -67,6 +73,61 @@ public class MixinExtension {
         String getName() {
             this.handle.name
         }
+
+    }
+    
+    static abstract class ConfigureReobfTask extends DefaultTask {
+        
+        @Internal
+        Task targetTask
+        
+        @Internal
+        Set<File> mappingFiles = []
+        
+        @TaskAction
+        def run() {
+            for (File mappingFile : this.mappingFiles) {
+                if (mappingFile.exists()) {
+                    this.project.logger.info "Contributing tsrg mappings ({}) to {} in {}", mappingFile, targetTask.name, targetTask.project
+                    this.addMappingFile(mappingFile)
+                } else {
+                    this.project.logger.debug "Tsrg file ({}) not found, skipping", mappingFile
+                }
+            }
+        }
+
+        protected void addMappingFile(File mappingFile) {
+        }            
+    
+    }
+    
+    static class ConfigureReobfTaskForUserDev extends ConfigureReobfTask {
+        
+        @Override
+        protected void addMappingFile(File mappingFile) {
+            def extraMappings = this.targetTask.properties.extraMappings
+            
+            // FG5+
+            if (extraMappings instanceof ConfigurableFileCollection) {
+                extraMappings.from(mappingFile)
+                return
+            }
+            
+            // Versions of FG prior to 5
+            this.targetTask.extraMapping(mappingFile)
+        }
+        
+    }
+
+    static class ConfigureReobfTaskForPatcher extends ConfigureReobfTask {
+
+        @Override
+        protected void addMappingFile(File mappingFile) {
+            this.targetTask.args += [
+                '--srg-in', mappingFile.absolutePath
+            ]
+        }
+
     }
     
     static class ArtefactSpecificRefmap extends File {
@@ -99,7 +160,20 @@ public class MixinExtension {
         def run() {
             // Add the refmap to all reobf'd jars
             this.reobfTasks.each { reobfTask ->
-                reobfTask.handle.dependsOn.findAll { it == remappedJar }.each { jar ->
+                def jarTasks = reobfTask.handle.dependsOn.findAll { it == remappedJar }.toSet()
+                // ForgeGradle 5 uses a mapped task output provider instead of explicitly depending on the jar task.
+                // So, we need to find that task here.
+                try {
+                    if (reobfTask.handle.input instanceof org.gradle.api.internal.provider.ValueSupplier) {
+                        reobfTask.handle.input.producer.visitProducerTasks {
+                            if (it == remappedJar)
+                                jarTasks.add it
+                        }
+                    }
+                } catch (Throwable e) {
+                    // Swallow any issues, since ValueSupplier doesn't exist on Gradle 5 and lower
+                }
+                jarTasks.each { jar ->
                     jarRefMaps.each { artefactSpecificRefMap ->
                         project.logger.info "Contributing refmap ({}) to {} in {}", artefactSpecificRefMap.refMap, jar.archiveName, reobfTask.project
                         jar.getRefMaps().from(artefactSpecificRefMap)
@@ -122,7 +196,7 @@ public class MixinExtension {
      * 'patcher' is used for developing Forge itself, and any other project that edits Minecraft's source directly.
      * 'userdev' is used by modders who are using Forge or other project based on the patcher plugin.
      */
-    @PackageScope final String projectType;
+    @PackageScope final String projectType
     
     /**
      * Detected gradle major version, used in compatibility checks 
@@ -763,17 +837,21 @@ public class MixinExtension {
 
         // Closure to allocate generated AP resources once compile task is completed
         this.reobfTasks.each { reobfTask ->
-            reobfTask.handle.doFirst {
-                if (tsrgFile.exists()) {
-                    project.logger.info "Contributing tsrg mappings ({}) to {} in {}", tsrgFile, reobfTask.name, reobfTask.project
-                    if (projectType == 'userdev') {
-                        delegate.extraMapping(tsrgFile)
-                    } else if (projectType == 'patcher') {
-                        delegate.args += ['--srg-in', tsrgFile.absolutePath]
+            // We can't use doFirst on the handle task here in ForgeGradle 5, so we instead use a configure task.
+            // This is because ForgeGradle 5 uses a ConfigurableFileCollection, and Gradle finalizes properties on task start.
+            // Using doFirst inside the configure task works fine.
+            try {
+                def configureReobfTaskType = this.projectType == 'patcher' ? ConfigureReobfTaskForPatcher.class : this.projectType == 'userdev' ? ConfigureReobfTaskForUserDev.class : null
+                if (configureReobfTaskType != null) {
+                    def configureReobfTaskTask = project.tasks.maybeCreate("configureReobfTaskFor${reobfTask.name.capitalize()}", configureReobfTaskType).configure {
+                        outputs.upToDateWhen { false }
+                        targetTask = reobfTask.handle
+                        mappingFiles += tsrgFile
                     }
-                } else {
-                    project.logger.debug "Tsrg file ({}) not found, skipping", tsrgFile
+                    reobfTask.handle.dependsOn configureReobfTaskTask
                 }
+            } catch (Exception e) {
+                e.printStackTrace()
             }
         }
     }
@@ -878,11 +956,11 @@ public class MixinExtension {
         }
 
         if (libs.size() == 0) {
-            return null;
+            return null
         }
         
         importsFile.newOutputStream().withStream { stream ->
-            PrintWriter writer = new PrintWriter(stream);
+            PrintWriter writer = new PrintWriter(stream)
             for (File lib : libs) {
                 Imports[lib].appendTo(writer)
             }
