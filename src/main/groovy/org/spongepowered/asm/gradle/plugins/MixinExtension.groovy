@@ -35,8 +35,8 @@ import org.gradle.api.artifacts.Dependency
 import org.gradle.api.artifacts.ProjectDependency
 import org.gradle.api.artifacts.ResolvedArtifact
 import org.gradle.api.file.ConfigurableFileCollection
+import org.gradle.api.provider.ListProperty
 import org.gradle.api.tasks.Input
-import org.gradle.api.tasks.InputFile
 import org.gradle.api.tasks.InputFiles
 import org.gradle.api.tasks.Internal
 import org.gradle.api.tasks.SourceSet
@@ -128,9 +128,14 @@ public class MixinExtension {
 
         @Override
         protected void addMappingFile(File mappingFile) {
-            this.reobfTask.args += [
+            def add = [
                 '--srg-in', mappingFile.absolutePath
             ]
+            if (this.reobfTask.args instanceof ListProperty) {
+                this.reobfTask.args.addAll(add)
+            } else {
+                this.reobfTask.args += add
+            }
         }
 
     }
