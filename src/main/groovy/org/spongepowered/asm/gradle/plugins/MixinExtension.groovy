@@ -24,8 +24,8 @@
  */
 package org.spongepowered.asm.gradle.plugins
 
-import com.google.common.io.Files
-import groovy.transform.PackageScope
+import java.util.Map.Entry
+
 import org.gradle.api.DefaultTask
 import org.gradle.api.InvalidUserDataException
 import org.gradle.api.Project
@@ -47,7 +47,9 @@ import org.gradle.jvm.tasks.Jar
 import org.gradle.util.VersionNumber
 import org.spongepowered.asm.gradle.plugins.meta.Imports
 
-import java.util.Map.Entry
+import com.google.common.io.Files
+
+import groovy.transform.PackageScope
 
 /**
  * Extension object for mixin configuration, actually manages the configuration
@@ -371,11 +373,7 @@ public class MixinExtension {
         } else {
             throw new InvalidUserDataException("Could not find property 'minecraft', or 'patcher' on $project, ensure ForgeGradle is applied.")
         }
-        
-        if (!this.disableEclipseAddon) {
-            MixinEclipse.configureEclipse(this, this.project, this.projectType)
-        }
-        
+
         this.init(this.project, this.projectType)
     }
     
@@ -413,7 +411,11 @@ public class MixinExtension {
                     }
                 }
             }
-            
+
+            if (!this.disableEclipseAddon) {
+                MixinEclipse.configureEclipse(this, this.project, this.projectType)
+            }
+
             this.applyDefault()
         }
 
