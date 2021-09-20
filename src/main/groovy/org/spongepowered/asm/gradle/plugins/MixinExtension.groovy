@@ -46,7 +46,7 @@ import org.gradle.api.tasks.compile.JavaCompile
 import org.gradle.jvm.tasks.Jar
 import org.gradle.util.VersionNumber
 import org.spongepowered.asm.gradle.plugins.meta.Imports
-
+import org.spongepowered.asm.gradle.plugins.struct.DynamicProperties
 import java.util.Map.Entry
 
 /**
@@ -161,10 +161,13 @@ public class MixinExtension {
     }
 
     /**
-     * Task which contributes generated refmap from configured sourcesets to the
-     * (pre-obf) jar
+     * Task which contributes generated refmap from configured sourcesets, and
+     * configs declared by the user, to the (pre-obf) jar
      */
-    static class AddRefMapToJarTask extends DefaultTask {
+    static class AddMixinsToJarTask extends DefaultTask {
+        
+        @Internal
+        MixinExtension extension
 
         @Input
         Jar remappedJar
@@ -185,8 +188,9 @@ public class MixinExtension {
                 try {
                     if (reobfTask.input instanceof org.gradle.api.internal.provider.ValueSupplier) {
                         reobfTask.input.producer.visitProducerTasks {
-                            if (it == remappedJar)
+                            if (it == remappedJar) {
                                 jarTasks.add it
+                            }
                         }
                     }
                 } catch (Throwable e) {
@@ -199,6 +203,10 @@ public class MixinExtension {
                         jar.from(artefactSpecificRefMap) {
                             into artefactSpecificRefMap.refMap.parent
                         }
+                    }
+                    
+                    if (!jar.manifest.attributes.containsKey("MixinConfigs")) {
+                        jar.manifest.attributes += [ "MixinConfigs": this.extension.configNames.join(',') ]
                     }
                 }
             }
@@ -257,15 +265,27 @@ public class MixinExtension {
     private Map<String, String> tokens = [:]
     
     /**
+     * System properties to contribute to all runs
+     */
+    @PackageScope DynamicProperties systemProperties = new DynamicProperties("mixin");
+    
+    /**
      * Reobf tasks we will target
      */
     @PackageScope Set<Task> reobfTasks = []
     
     /**
-     * Handles for tasks which add the refmaps to each jar, one per jar
+     * Handles for tasks which add the mixin resources (refmaps, config manifest
+     * entries) to each jar, one per jar
      */
-    @PackageScope Set<AddRefMapToJarTask> addRefMapToJarTasks = []
+    @PackageScope Set<AddMixinsToJarTask> addMixinsToJarTasks = []
     
+    /**
+     * Set of all specified mixin configs, added to run configurations and jar
+     * manifests
+     */
+    @PackageScope Set<String> configNames = []
+
     /**
      * If a refMap overlap is detected a warning will be output, however there
      * are situations where a refMap overlap may be desired (for example if
@@ -415,6 +435,7 @@ public class MixinExtension {
             }
             
             this.applyDefault()
+            this.configureRuns()
         }
 
         SourceSet.metaClass.getRefMap = {
@@ -582,6 +603,40 @@ public class MixinExtension {
     }
     
     /**
+     * Configure all run configurations with mixin config args and any mixin
+     * debug args specified in the mixin closure 
+     */
+    @PackageScope void configureRuns() {
+        if (this.projectType == 'userdev') {
+            project.extensions.minecraft.runs.each { runConfig ->
+                if (project.tasks.findByName('createSrgToMcp')) {
+                    def srgToMcpFile = project.tasks.createSrgToMcp.outputs.files[0].path
+                    
+                    // Supply the legacy GradleStart property which identifies the remapping file
+                    runConfig.property 'net.minecraftforge.gradle.GradleStart.srg.srg-mcp', srgToMcpFile
+                    
+                    // If the user has already specified remapRefMap then we assume they either
+                    // supplied a mapping file path manually, or mixin will fall back on the
+                    // GradleStart property above. If the user has specified these options in
+                    // the mixin closure then the values will be overwritten below anyway.
+                    if (!runConfig.properties.containsKey('mixin.env.remapRefMap')) {
+                        runConfig.property 'mixin.env.remapRefMap', 'true'
+                        runConfig.property 'mixin.env.refMapRemappingFile', srgToMcpFile
+                    }
+                }
+                
+                this.configNames.each { configName ->
+                    runConfig.args '--mixin.config', configName
+                } 
+                
+                this.systemProperties.args.each {
+                    runConfig.property it.key, it.value.toString()
+                }
+            }
+        }
+    }
+    
+    /**
      * Searches the compile configuration of each SourceSet that has been
      * registered via add() looking for the mixin dependency. If the mixin
      * dependency is found and the current gradle version is 5 or higher then
@@ -679,6 +734,112 @@ public class MixinExtension {
         } else if (dependency instanceof Dependency) {
             return VersionNumber.parse(dependency.version)
         }
+    }
+    
+    /**
+     * Register a mixin config which will be added to all reobf'd jar manifests
+     * and all run configurations
+     */
+    void config(String path) {
+        this.configNames += path
+    }
+    
+    /**
+     * Accessor for system properties starting with mixin.debug
+     */
+    def getDebug() {
+        return this.systemProperties.debug
+    }
+    
+    /**
+     * Accessor for system property mixin.debug
+     */
+    def setDebug(def value) {
+        this.systemProperties.debug = value
+    }
+    
+    /**
+     * Accessor for system properties starting with mixin.checks
+     */
+    def getChecks() {
+        return this.systemProperties.checks
+    }
+
+    /**
+     * Accessor for system property mixin.checks
+     */
+    def setChecks(def value) {
+        this.systemProperties.checks = value
+    }
+    
+    /**
+     * Accessor for system property mixin.dumpTargetOnFailure
+     */
+    def getDumpTargetOnFailure() {
+        return this.systemProperties.dumpTargetOnFailure
+    }
+    
+    /**
+     * Accessor for system property mixin.dumpTargetOnFailure
+     */
+    def setDumpTargetOnFailure(def value) {
+        this.systemProperties.dumpTargetOnFailure = value
+    }
+    
+    /**
+     * Accessor for system property mixin.ignoreConstraints
+     */
+    def getIgnoreConstraints() {
+        return this.systemProperties.ignoreConstraints
+    }
+    
+    /**
+     * Accessor for system property mixin.ignoreConstraints
+     */
+    def setIgnoreConstraints(def value) {
+        this.systemProperties.ignoreConstraints = value
+    }
+    
+    /**
+     * Accessor for system property mixin.hotSwap
+     */
+    def getHotSwap() {
+        return this.systemProperties.hotSwap
+    }
+    
+    /**
+     * Accessor for system property mixin.hotSwap
+     */
+    def setHotSwap(def value) {
+        this.systemProperties.hotSwap = value
+    }
+    
+    /**
+     * Accessor for system properties starting with mixin.env
+     */
+    def getEnv() {
+        return this.systemProperties.env
+    }
+    
+    /**
+     * Accessor for system property mixin.env
+     */
+    def setEnv(def value) {
+        this.systemProperties.env = value
+    }
+    
+    /**
+     * Accessor for system property mixin.initialiserInjectionMode
+     */
+    def getInitialiserInjectionMode() {
+        return this.systemProperties.initialiserInjectionMode
+    }
+    
+    /**
+     * Accessor for system property mixin.initialiserInjectionMode
+     */
+    def setInitialiserInjectionMode(def mode) {
+        this.systemProperties.initialiserInjectionMode = mode
     }
     
     /**
@@ -835,10 +996,11 @@ public class MixinExtension {
         // added until later) we add one such task for every jar and the task
         // can handle the heavy lifting of figuring out what to contribute
         project.tasks.withType(Jar.class) { jarTask ->
-            this.addRefMapToJarTasks.add(project.tasks.maybeCreate("addRefMapTo${jarTask.name.capitalize()}", AddRefMapToJarTask.class).configure {
+            this.addMixinsToJarTasks.add(project.tasks.maybeCreate("addMixinsTo${jarTask.name.capitalize()}", AddMixinsToJarTask.class).configure {
                 doFirst {
                     this.checkForAnnotationProcessors()
                 }
+                extension = this
                 dependsOn(compileTask)
                 remappedJar = jarTask
                 reobfTasks = this.reobfTasks
