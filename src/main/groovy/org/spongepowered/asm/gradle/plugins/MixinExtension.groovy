@@ -204,9 +204,10 @@ public class MixinExtension {
                             into artefactSpecificRefMap.refMap.parent
                         }
                     }
-                    
-                    if (!jar.manifest.attributes.containsKey("MixinConfigs")) {
-                        jar.manifest.attributes += [ "MixinConfigs": this.extension.configNames.join(',') ]
+                    if (this.extension.configNames && !jar.manifest.attributes.containsKey("MixinConfigs")) {
+                        def configNamesCsv = this.extension.configNames.join(',')
+                        project.logger.info "Contributing configs ({}) to manifest of {} in {}", configNamesCsv, jar.archiveName, reobfTask.project
+                        jar.manifest.attributes['MixinConfigs'] = configNamesCsv
                     }
                 }
             }
