@@ -1,28 +1,34 @@
 buildscript {
     repositories {
-        maven {
-            url 'https://plugins.gradle.org/m2/'
-        }
+        maven { url 'https://plugins.gradle.org/m2/' }
+        maven { url 'https://maven.minecraftforge.net' }
+        mavenCentral()
     }
     dependencies {
         classpath 'nl.javadude.gradle.plugins:license-gradle-plugin:0.11.0'
         classpath 'com.gradle.publish:plugin-publish-plugin:0.9.1'
+        classpath 'net.minecraftforge:GradleUtils:1.+'
     }
 }
 
 apply plugin: 'groovy'
 apply plugin: 'license'
-apply plugin: 'maven'
+apply plugin: 'maven-publish'
 apply plugin: 'eclipse'
 apply plugin: 'com.gradle.plugin-publish'
+apply plugin: 'net.minecraftforge.gradleutils'
 
 defaultTasks 'licenseFormat', 'build'
 
+ext.buildType = project.hasProperty("buildType") ? buildType : 'RELEASE'
+ext.buildNumber = project.hasProperty("buildNumber") ? buildNumber : '0'
+ext.ciSystem = project.hasProperty("ciSystem") ? ciSystem : 'unknown'
+ext.commit = project.hasProperty("commit") ? commit : 'unknown'
+
 group = 'org.spongepowered'
-version = buildVersion + (buildType == 'RELEASE' ? '' : "-$buildType")
+version = buildType == 'SNAPSHOT' ? "$buildVersion-SNAPSHOT" : gradleutils.tagOffsetVersion
 archivesBaseName = 'mixingradle'
-targetCompatibility = '1.6'
-sourceCompatibility = '1.6'
+sourceCompatibility = targetCompatibility = '1.8'
 
 repositories {
     mavenCentral()
@@ -31,16 +37,10 @@ repositories {
     }
 }
 
-configurations {
-    deployerJars
-}
-
 dependencies {
     implementation gradleApi()
-//    implementation 'org.codehaus.groovy:groovy-all:2.5.8'
     implementation 'com.google.guava:guava:21.0'
-    implementation 'org.ow2.asm:asm-tree:6.2'
-    deployerJars 'org.apache.maven.wagon:wagon-ftp:2.7'
+    implementation 'org.ow2.asm:asm-tree:9.2'
 }
 
 eclipse.classpath.file.whenMerged {
@@ -76,28 +76,10 @@ jar {
     manifest.mainAttributes (
         "Built-By": System.properties['user.name'],
         "Created-By": System.properties['java.vm.version'] + " (" + System.properties['java.vm.vendor'] + ")",
-        "Implementation-Title": name,
-        "Implementation-Version": buildVersion
+        "Implementation-Title": project.name,
+        "Implementation-Version": project.version + "+" + ciSystem + "-b" + buildNumber + ".git-" + commit,
     )
 }
-
-/* task signJar() {
-    inputs.files(jar.outputs)
-    outputs.files(jar.outputs)
-    doLast {
-        ant.signjar(
-            alias: project.keyStoreCert,
-            jar: jar.outputs.files[0],
-            keystore: project.keyStorePath,
-            storepass: project.keyStoreSecret,
-            keypass: project.keyStoreSecret,
-            tsaurl: project.timestampAuthority,
-            preservelastmodified: 'true',
-            verbose: true
-        )
-    }
-}
-build.dependsOn(signJar) */
 
 task groovydocJar(type: Jar, dependsOn: groovydoc) {
     from groovydoc.destinationDir
@@ -122,49 +104,70 @@ pluginBundle {
     }
 }
 
-uploadArchives {
-    repositories {
-
-        mavenDeployer {
-            configuration = configurations.deployerJars
-
-            if (project.hasProperty("spongeRepo")) {
-                repository(url: project.spongeRepo) {
-                    authentication(userName: project.spongeUsername, password: project.spongePassword)
-                }
-            } else  {
-                repository(url: 'file://' + rootProject.file('repo').getAbsolutePath())
-            }
-
+publishing {
+    publications {
+        maven(MavenPublication) {
+            artifact jar
+            artifact groovydocJar
+            
+            groupId = project.group
+            version = project.version
+            artifactId = project.archivesBaseName
+                
             pom {
-                groupId = project.group
-                version = project.version
-                artifactId = project.archivesBaseName
-                project {
-                    name project.archivesBaseName
-                    packaging 'jar'
-                    description 'MixinGradle'
-                    url 'http://www.spongepowered.org/'
+                name = project.archivesBaseName
+                packaging = 'jar'
+                description = 'MixinGradle'
+                url = 'http://www.spongepowered.org/'
 
-                    scm {
-                        url 'https://github.com/SpongePowered/MixinGradle'
-                        connection 'scm:git:git://github.com/SpongePowered/MixinGradle.git'
-                        developerConnection 'scm:git:git@github.com:SpongePowered/MixinGradle.git'
-                    }
+                scm {
+                    url = 'https://github.com/SpongePowered/MixinGradle'
+                    connection = 'scm:git:git://github.com/SpongePowered/MixinGradle.git'
+                    developerConnection = 'scm:git:git@github.com:SpongePowered/MixinGradle.git'
+                }
 
-                    issueManagement {
-                        system 'GitHub Issues'
-                        url 'https://github.com/SpongePowered/MixinGradle/issues'
-                    }
+                issueManagement {
+                    system = 'GitHub Issues'
+                    url = 'https://github.com/SpongePowered/MixinGradle/issues'
+                }
 
-                    licenses {
-                        license {
-                            name 'MIT license'
-                            url 'http://opensource.org/licenses/MIT'
-                            distribution 'repo'
-                        }
+                licenses {
+                    license {
+                        name = 'MIT license'
+                        url = 'http://opensource.org/licenses/MIT'
+                        distribution = 'repo'
                     }
                 }
+            }
+        }
+    }
+    repositories {
+        if (buildType == 'RELEASE') {
+            if (project.hasProperty("releaseRepo")) {
+                maven {
+                    credentials {
+                        username = project.releaseRepoUsername
+                        password = project.releaseRepoPassword
+                    }
+                    url project.releaseRepo
+                }
+            }
+            if (project.hasProperty("spongeReleaseRepo")) {
+                maven {
+                    credentials {
+                        username = project.spongeUsername
+                        password = project.spongePassword
+                    }
+                    url project.spongeReleaseRepo
+                }
+            }
+        } else if (project.hasProperty("spongeSnapshotRepo")) {
+            maven {
+                credentials {
+                    username = project.spongeUsername
+                    password = project.spongePassword
+                }
+                url project.spongeSnapshotRepo
             }
         }
     }

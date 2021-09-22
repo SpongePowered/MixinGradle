@@ -28,8 +28,9 @@ import org.gradle.api.InvalidUserDataException
 import org.gradle.api.Plugin
 import org.gradle.api.Project
 import org.gradle.api.file.ProjectLayout
-import org.gradle.api.internal.tasks.DefaultSourceSet;
-import org.gradle.api.tasks.SourceSet;
+import org.gradle.api.internal.tasks.DefaultSourceSet
+import org.gradle.api.tasks.SourceSet
+import org.gradle.util.VersionNumber
 
 import javax.inject.Inject
 
@@ -46,7 +47,7 @@ public class MixinGradlePlugin implements Plugin<Project> {
      * Plugin version, sent to the AP so that the AP can notify if the plugin
      * version is too old to support its feature set
      */
-    static final String VERSION = "0.7"
+    static final String VERSION = getCurrentVersion() ?: '0.7'
 
     /* (non-Groovydoc)
      * @see org.gradle.api.Plugin#apply(java.lang.Object)
@@ -74,6 +75,15 @@ public class MixinGradlePlugin implements Plugin<Project> {
 
         if (!project.extensions.findByName('minecraft') && !project.extensions.findByName('patcher')) {
             throw new InvalidUserDataException("Could not find property 'minecraft', or 'patcher' on $project, ensure ForgeGradle is applied.")
+        }
+    }
+    
+    private static String getCurrentVersion() {
+        try {
+            def versionMatch = Class.forName('org.spongepowered.asm.gradle.plugins.MixinGradlePlugin').package.implementationVersion =~ /^(\d+\.\d+(\.\d+))/
+            return versionMatch ? VersionNumber.parse(versionMatch[0][1]) : null
+        } catch (Throwable th) {
+            // probably development
         }
     }
     
