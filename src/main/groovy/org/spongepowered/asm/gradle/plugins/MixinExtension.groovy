@@ -286,6 +286,11 @@ public class MixinExtension {
      * manifests
      */
     @PackageScope Set<String> configNames = []
+    
+    /**
+     * Collection of message properties
+     */
+    HashMap<String, String> messages = [:]
 
     /**
      * If a refMap overlap is detected a warning will be output, however there
@@ -360,6 +365,13 @@ public class MixinExtension {
      * messages such as the AP version, etc. 
      */
     boolean quiet
+    
+    /**
+     * Instruction for the annotation processor to decorate all messages with
+     * the message type. This can be used to determine the type for messages you
+     * wish to specify custom levels for. 
+     */
+    boolean showMessageTypes
     
     /**
      * Additional TSRG mapping files to supply to the annotation processor. LTP.
@@ -506,6 +518,13 @@ public class MixinExtension {
      */
     void quiet() {
         quiet = true
+    }
+    
+    /**
+     * Directive version of {@link #showMessageTypes}
+     */
+    void showMessageTypes() {
+        showMessageTypes = true
     }
     
     /**
@@ -843,6 +862,11 @@ public class MixinExtension {
         this.systemProperties.initialiserInjectionMode = mode
     }
     
+    def messages(Closure closure) {
+        closure.delegate = this.messages
+        closure()
+    }
+    
     /**
      * Add a sourceSet for mixin processing by name, the sourceSet must exist
      * and define the <tt>refMap</tt> property.
@@ -1088,6 +1112,16 @@ public class MixinExtension {
         
         if (this.quiet) {
             compileTask.options.compilerArgs += '-Aquiet=true'
+        }
+        
+        if (this.showMessageTypes) {
+            compileTask.options.compilerArgs += '-AshowMessageTypes=true'
+        }
+        
+        this.messages.each { property, level ->
+            if (property =~ /^[A-Z]+[A-Z_]+$/ && level =~ /^(note|warning|error|disabled)$/) {
+                compileTask.options.compilerArgs += "-AMSG_$property=$level"
+            }
         }
     }
     
