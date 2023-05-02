@@ -7,15 +7,15 @@ buildscript {
     dependencies {
         classpath 'nl.javadude.gradle.plugins:license-gradle-plugin:0.11.0'
         classpath 'com.gradle.publish:plugin-publish-plugin:0.9.1'
-        classpath 'net.minecraftforge:GradleUtils:1.+'
+        classpath 'net.minecraftforge.gradleutils:GradleUtils:2.+'
     }
 }
 
 apply plugin: 'groovy'
 apply plugin: 'license'
+apply plugin: 'groovy-gradle-plugin'
 apply plugin: 'maven-publish'
 apply plugin: 'eclipse'
-apply plugin: 'com.gradle.plugin-publish'
 apply plugin: 'net.minecraftforge.gradleutils'
 
 defaultTasks 'licenseFormat', 'build'
@@ -83,7 +83,7 @@ jar {
 
 task groovydocJar(type: Jar, dependsOn: groovydoc) {
     from groovydoc.destinationDir
-    classifier = 'groovydoc'
+    archiveClassifier = 'groovydoc'
 }
 
 artifacts {
@@ -91,29 +91,30 @@ artifacts {
     archives groovydocJar
 }
 
-pluginBundle {
+gradlePlugin {
     website = 'http://www.gradle.org/'
     vcsUrl = 'https://github.com/SpongePowered/MixinGradle'
-    description = 'Gradle plugin for SpongePowered Mixin'
-    tags = ['spongepowered', 'sponge', 'mixin']
     plugins {
         patcher {
             id = 'org.spongepowered.mixin'
+            implementationClass = 'org.spongepowered.asm.gradle.plugins.MixinGradlePlugin'
             displayName = 'SpongePowered Mixin Gradle Plugin'
+            description = 'Gradle plugin for SpongePowered Mixin'
+            tags.addAll('spongepowered', 'sponge', 'mixin')
         }
     }
+    automatedPublishing = true
 }
 
 publishing {
     publications {
-        maven(MavenPublication) {
-            artifact jar
-            artifact groovydocJar
-            
+        pluginMaven(MavenPublication) {
+            // Automated publishing declares the java component for us
+
             groupId = project.group
             version = project.version
             artifactId = project.archivesBaseName
-                
+
             pom {
                 name = project.archivesBaseName
                 packaging = 'jar'
