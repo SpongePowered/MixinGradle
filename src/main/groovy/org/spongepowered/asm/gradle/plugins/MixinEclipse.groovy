@@ -22,9 +22,11 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
  * THE SOFTWARE.
  */
+
 package org.spongepowered.asm.gradle.plugins
 
 import groovy.xml.MarkupBuilder
+import org.gradle.api.tasks.InputFiles
 
 import java.util.Collections
 import java.util.Enumeration
@@ -88,12 +90,12 @@ public class MixinEclipse {
     
     static class EclipseJdtAptTask extends DefaultTask {
         @InputFile File mappingsIn
-        @Input File refmapOut = project.file("build/${name}/mixins.refmap.json")
-        @Input File mappingsOut = project.file("build/${name}/mixins.mappings.tsrg")
+        @InputFile File refmapOut = project.file("build/${name}/mixins.refmap.json")
+        @InputFile File mappingsOut = project.file("build/${name}/mixins.mappings.tsrg")
         @Input Map<String, String> processorOptions = new TreeMap<>()
         
-        @Input File genTestDir = project.file('build/.apt_generated_test')
-        @Input File genDir = project.file('build/.apt_generated')
+        @InputFile File genTestDir = project.file('build/.apt_generated_test')
+        @InputFile File genDir = project.file('build/.apt_generated')
         
         @OutputFile File output
         
@@ -156,7 +158,7 @@ public class MixinEclipse {
     }
 
     static class EclipseFactoryPath extends DefaultTask {
-        @Input Configuration config
+        @InputFiles Configuration config
         @OutputFile File output
         
         @TaskAction

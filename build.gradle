@@ -1,24 +1,13 @@
-buildscript {
-    repositories {
-        maven { url 'https://plugins.gradle.org/m2/' }
-        maven { url 'https://maven.minecraftforge.net' }
-        mavenCentral()
-    }
-    dependencies {
-        classpath 'nl.javadude.gradle.plugins:license-gradle-plugin:0.11.0'
-        classpath 'com.gradle.publish:plugin-publish-plugin:0.9.1'
-        classpath 'net.minecraftforge.gradleutils:GradleUtils:2.+'
-    }
+plugins {
+    id 'groovy'
+    id 'groovy-gradle-plugin'
+    id 'eclipse'
+    id 'maven-publish'
+    id 'org.cadixdev.licenser' version '0.6.1'
+    id 'net.minecraftforge.gradleutils' version '2.+'
 }
 
-apply plugin: 'groovy'
-apply plugin: 'license'
-apply plugin: 'groovy-gradle-plugin'
-apply plugin: 'maven-publish'
-apply plugin: 'eclipse'
-apply plugin: 'net.minecraftforge.gradleutils'
-
-defaultTasks 'licenseFormat', 'build'
+defaultTasks 'updateLicenses', 'build'
 
 ext.buildType = project.hasProperty("buildType") ? buildType : 'RELEASE'
 ext.buildNumber = project.hasProperty("buildNumber") ? buildNumber : '0'
@@ -63,13 +52,8 @@ license {
         url = project.url
     }
     include '**/*.groovy'
-    header file('HEADER.txt')
-    sourceSets = project.sourceSets
-    ignoreFailures false
-    strictCheck true
-    mapping {
-        java = 'SLASHSTAR_STYLE'
-    }
+    header = file('HEADER.txt')
+    ignoreFailures = false
 }
 
 jar {
