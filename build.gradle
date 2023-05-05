@@ -1,10 +1,9 @@
 plugins {
-    id 'groovy'
-    id 'groovy-gradle-plugin'
     id 'eclipse'
     id 'maven-publish'
     id 'org.cadixdev.licenser' version '0.6.1'
     id 'net.minecraftforge.gradleutils' version '2.+'
+    id 'dev.gradleplugins.groovy-gradle-plugin' version '1.6.9'
 }
 
 defaultTasks 'updateLicenses', 'build'
@@ -27,18 +26,8 @@ repositories {
 }
 
 dependencies {
-    implementation gradleApi()
     implementation 'com.google.guava:guava:21.0'
     implementation 'org.ow2.asm:asm-tree:9.2'
-}
-
-eclipse.classpath.file.whenMerged {
-    entries.each {
-        if (it.path.contains('gradle-api') && it.sourcePath == null) {
-            // Source attachment doesn't currently work when using gradleApi() dependency so include manually
-            it.sourcePath = fileReference(file('lib/core-api.zip'))
-        }
-    }
 }
 
 processResources {
@@ -76,6 +65,9 @@ artifacts {
 }
 
 gradlePlugin {
+    compatibility {
+        minimumGradleVersion = '6.6'
+    }
     website = 'http://www.gradle.org/'
     vcsUrl = 'https://github.com/SpongePowered/MixinGradle'
     plugins {
