@@ -18,6 +18,10 @@ version = buildType == 'SNAPSHOT' ? "$buildVersion-SNAPSHOT" : gradleutils.tagOf
 archivesBaseName = 'mixingradle'
 sourceCompatibility = targetCompatibility = '1.8'
 
+if (JavaVersion.current() != JavaVersion.VERSION_1_8) {
+    throw new GradleException("The use of the groovydoc task requires the Gradle JVM to be JRE 1.8; please change your Gradle JVM to 1.8")
+}
+
 repositories {
     mavenCentral()
     maven {
@@ -119,6 +123,9 @@ publishing {
         }
     }
     repositories {
+        maven {
+            url 'file:///D:/IdeaProjects/MixinGradle/repo'
+        }
         if (buildType == 'RELEASE') {
             if (project.hasProperty("releaseRepo")) {
                 maven {
