@@ -123,9 +123,6 @@ publishing {
         }
     }
     repositories {
-        maven {
-            url 'file:///D:/IdeaProjects/MixinGradle/repo'
-        }
         if (buildType == 'RELEASE') {
             if (project.hasProperty("releaseRepo")) {
                 maven {
