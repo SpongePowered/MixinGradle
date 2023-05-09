@@ -22,6 +22,7 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
  * THE SOFTWARE.
  */
+
 package org.spongepowered.asm.gradle.plugins
 
 import com.google.common.io.Files
@@ -198,7 +199,7 @@ public class MixinExtension {
                 }
                 jarTasks.each { jar ->
                     jarRefMaps.each { artefactSpecificRefMap ->
-                        project.logger.info "Contributing refmap ({}) to {} in {}", artefactSpecificRefMap.refMap, jar.archiveName, reobfTask.project
+                        project.logger.info "Contributing refmap ({}) to {} in {}", artefactSpecificRefMap.refMap, jar.hasProperty('archiveFileName') ? jar.archiveFileName.get() : jar.archiveName, reobfTask.project
                         jar.getRefMaps().from(artefactSpecificRefMap)
                         jar.from(artefactSpecificRefMap) {
                             into artefactSpecificRefMap.refMap.parent
@@ -206,7 +207,7 @@ public class MixinExtension {
                     }
                     if (this.extension.configNames && !jar.manifest.attributes.containsKey("MixinConfigs")) {
                         def configNamesCsv = this.extension.configNames.join(',')
-                        project.logger.info "Contributing configs ({}) to manifest of {} in {}", configNamesCsv, jar.archiveName, reobfTask.project
+                        project.logger.info "Contributing configs ({}) to manifest of {} in {}", configNamesCsv, jar.hasProperty('archiveFileName') ? jar.archiveFileName.get() : jar.archiveName, reobfTask.project
                         jar.manifest.attributes['MixinConfigs'] = configNamesCsv
                     }
                 }
@@ -1034,7 +1035,7 @@ public class MixinExtension {
             })
             if (projectType == 'patcher') { //Patcher's universal jar is built from a filtered jar, so our normal detection doesn't find it.
                 if ('universalJar' == jarTask.name) {
-                    project.logger.info "Contributing refmap ({}) to {} in {}", taskSpecificRefMap, jarTask.archiveName, project
+                    project.logger.info "Contributing refmap ({}) to {} in {}", taskSpecificRefMap, jar.hasProperty('archiveFileName') ? jar.archiveFileName.get() : jar.archiveName, project
                     jarTask.getRefMaps().from(taskSpecificRefMap)
                     jarTask.from(taskSpecificRefMap)
                 }
