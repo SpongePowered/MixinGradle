@@ -152,6 +152,7 @@ sourceSets {
  }
  ```
 ```kotlin
+ import org.spongepowered.asm.gradle.plugins.MixinExtension
  configure<MixinExtension> {
         disableTargetExport = true
         disableTargetValidator = true
@@ -168,6 +169,7 @@ sourceSets {
  ```
  Kotlin DSL:
  ```kotlin
+ import org.spongepowered.asm.gradle.plugins.MixinExtension
  configure<MixinExtension> {
         disableTargetExport
         disableTargetValidator
@@ -184,9 +186,10 @@ sourceSets {
  ```
  Kotlin DSL:
  ```kotlin
+ import org.spongepowered.asm.gradle.plugins.MixinExtension
  configure<MixinExtension> {
         // Specify "notch" or "searge" here
-        defaultObfuscationEn("notch")
+        defaultObfuscationEnv("notch")
  }
  ```
  
