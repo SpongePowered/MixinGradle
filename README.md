@@ -99,7 +99,7 @@ Groovy DSL:
  ```
 Kotlin DSL:
 ```kotlin
-apply("org.spongepowered.mixin")
+apply(plugin = "org.spongepowered.mixin")
 ```
  
 3. Create your `mixin` block, specify which sourceSets to process and provide refmap resource names for each one, the generated refmap will be added to the compiler task outputs automatically.
