@@ -36,6 +36,7 @@ dependencies {
 
 processResources {
    from 'LICENSE.txt'
+   duplicatesStrategy 'INCLUDE'
 }
 
 license {
