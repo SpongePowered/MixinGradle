@@ -42,6 +42,12 @@ Please ensure you are using the correct version of MixinGradle for your ForgeGra
  apply plugin: 'org.spongepowered.mixin'
  ```
  
+If using Eclipse, you should also enable the Eclipse APT plugin to receive annotation processor support within Eclipse:  
+  
+ ```groovy
+ apply plugin: 'com.diffplug.eclipse.apt'
+ ```
+  
 3. Create your `mixin` block, specify which sourceSets to process and provide refmap resource names for each one, the generated refmap will be added to the compiler task outputs automatically.
  
  ```groovy

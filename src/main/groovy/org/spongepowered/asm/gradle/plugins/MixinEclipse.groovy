@@ -52,21 +52,28 @@ public class MixinEclipse {
             project.logger.lifecycle '[MixinGradle] Skipping eclipse integration, extension not found'
             return
         }
-        
-        eclipseModel.jdt.file.withProperties { it.setProperty('org.eclipse.jdt.core.compiler.processAnnotations', 'enabled') }
-        def settings = project.tasks.register('eclipseJdtApt', EclipseJdtAptTask.class) {
+
+        def eclipseAptPlugin = project.plugins.findPlugin('com.diffplug.eclipse.apt')
+
+        def settings = project.tasks.register('mixinEclipseJdtApt', EclipseJdtAptTask.class) {
+            inputs.files project.tasks.createSrgToMcp
+            inputs.files project.tasks.createMcpToSrg
             description = 'Creates the Eclipse JDT APT settings file'
             output = project.file('.settings/org.eclipse.jdt.apt.core.prefs')
             mappingsIn = extension.mappings
+            hasDiffplug = eclipseAptPlugin
         }
-        project.tasks.eclipse.dependsOn(settings)
-        
-        def factories = project.tasks.register('eclipseFactoryPath', EclipseFactoryPath.class) {
+
+        def factories = project.tasks.register('mixinEclipseFactorypath', EclipseFactoryPath.class) {
             config = project.configurations.annotationProcessor
             output = project.file('.factorypath')
         }
-        project.tasks.eclipse.dependsOn(factories)
-        
+
+        // These tasks don't do any useful work unless the diffplug APT plugin is applied.
+        if (eclipseAptPlugin) {
+            project.tasks.eclipseJdtApt.dependsOn(settings)
+            project.tasks.eclipseFactorypath.dependsOn(factories)
+        }
     }
     
     static class OrderedProperties extends Properties {
@@ -90,25 +97,28 @@ public class MixinEclipse {
     
     static class EclipseJdtAptTask extends DefaultTask {
         @InputFile File mappingsIn
-        @InputFile File refmapOut = project.file("build/${name}/mixins.refmap.json")
-        @InputFile File mappingsOut = project.file("build/${name}/mixins.mappings.tsrg")
+        @OutputFile File refmapOut = project.file("build/${name}/mixins.refmap.json")
+        @OutputFile File mappingsOut = project.file("build/${name}/mixins.mappings.tsrg")
         @Input Map<String, String> processorOptions = new TreeMap<>()
         
-        @InputFile File genTestDir = project.file('build/.apt_generated_test')
-        @InputFile File genDir = project.file('build/.apt_generated')
+        @OutputFile File genTestDir = project.file('build/.apt_generated_test')
+        @OutputFile File genDir = project.file('build/.apt_generated')
         
         @OutputFile File output
         
+        @Input boolean hasDiffplug = false;
         
         @TaskAction
         def run() {
             MixinExtension extension = project.extensions.findByType(MixinExtension.class)
             def props = new OrderedProperties()
-            props.put('eclipse.preferences.version', '1')
-            props.put('org.eclipse.jdt.apt.aptEnabled', 'true')
-            props.put('org.eclipse.jdt.apt.reconcileEnabled', 'true')
-            props.put('org.eclipse.jdt.apt.genSrcDir', genDir.canonicalPath)
-            props.put('org.eclipse.jdt.apt.genSrcTestDir', genTestDir.canonicalPath)
+            if (!hasDiffplug) {
+                props.put('eclipse.preferences.version', '1')
+                props.put('org.eclipse.jdt.apt.aptEnabled', 'true')
+                props.put('org.eclipse.jdt.apt.reconcileEnabled', 'true')
+                props.put('org.eclipse.jdt.apt.genSrcDir', genDir.canonicalPath)
+                props.put('org.eclipse.jdt.apt.genSrcTestDir', genTestDir.canonicalPath)
+            }
             props.arg('reobfTsrgFile', mappingsIn.canonicalPath)
             props.arg('outTsrgFile', mappingsOut.canonicalPath)
             props.arg('outRefMapFile', refmapOut.canonicalPath)
@@ -153,7 +163,7 @@ public class MixinEclipse {
             }
             */
             
-            props.store(output.newWriter(), null)
+            props.store(output.newWriter(hasDiffplug), null);
         }
     }
 
