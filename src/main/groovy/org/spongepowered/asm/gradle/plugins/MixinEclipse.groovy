@@ -43,59 +43,16 @@ import org.gradle.api.tasks.OutputFile
 import org.gradle.api.tasks.TaskAction
 
 /**
- * Eclipse Specific intergration
+ * Eclipse-specific integration, configures annotation processing in eclipse if
+ * the diffplug eclipse APT plugin is also present
  */
 public class MixinEclipse {
-    static void configureEclipse(MixinExtension extension, Project project, String projectType/*, File reobf, File outRef, File outMapping*/) {
-        def eclipseModel = project.extensions.findByName('eclipse')
-        if (!eclipseModel) {
-            project.logger.lifecycle '[MixinGradle] Skipping eclipse integration, extension not found'
-            return
-        }
-
-        def hasEclipseAptPlugin = project.plugins.findPlugin('com.diffplug.eclipse.apt') != null
-
-        def settings = project.tasks.register('mixinEclipseJdtApt', EclipseJdtAptTask.class) {
-            inputs.files project.tasks.createSrgToMcp
-            inputs.files project.tasks.createMcpToSrg
-            description = 'Creates the Eclipse JDT APT settings file'
-            output = project.file('.settings/org.eclipse.jdt.apt.core.prefs')
-            mappingsIn = extension.mappings
-            hasDiffplug = hasEclipseAptPlugin
-        }
-
-        def factories = project.tasks.register('mixinEclipseFactorypath', EclipseFactoryPath.class) {
-            config = project.configurations.annotationProcessor
-            output = project.file('.factorypath')
-        }
-
-        // These tasks don't do any useful work unless the diffplug APT plugin is applied.
-        if (hasEclipseAptPlugin) {
-            project.tasks.eclipseJdtApt.dependsOn(settings)
-            project.tasks.eclipseFactorypath.dependsOn(factories)
-        }
-    }
     
-    static class OrderedProperties extends Properties {
-        def order = new LinkedHashSet<Object>()
-        
-        @Override
-        public synchronized Enumeration<Object> keys() {
-            return Collections.enumeration(order)
-        }
-        
-        @Override
-        public synchronized Object put(Object key, Object value) {
-            order.add(key)
-            return super.put(key, value)
-        }
-        
-        public Object arg(String key, String value) {
-            return put('org.eclipse.jdt.apt.processorOptions/' + key, value)
-        }
-    }
-    
+    /**
+     * Task which configures eclipse JDT annotation processing
+     */
     static class EclipseJdtAptTask extends DefaultTask {
+
         @InputFile File mappingsIn
         @OutputFile File refmapOut = project.file("build/${name}/mixins.refmap.json")
         @OutputFile File mappingsOut = project.file("build/${name}/mixins.mappings.tsrg")
@@ -167,7 +124,11 @@ public class MixinEclipse {
         }
     }
 
+    /**
+     * Task which configures the eclipse annotation processor factory path
+     */
     static class EclipseFactoryPath extends DefaultTask {
+
         @InputFiles Configuration config
         @OutputFile File output
         
@@ -180,4 +141,64 @@ public class MixinEclipse {
             }    
         }
     }
+    
+    /**
+     * Implementation of properties which retains insertion order
+     */
+    static class OrderedProperties extends Properties {
+        def order = new LinkedHashSet<Object>()
+        
+        @Override
+        public synchronized Enumeration<Object> keys() {
+            return Collections.enumeration(order)
+        }
+        
+        @Override
+        public synchronized Object put(Object key, Object value) {
+            order.add(key)
+            return super.put(key, value)
+        }
+        
+        public Object arg(String key, String value) {
+            return put('org.eclipse.jdt.apt.processorOptions/' + key, value)
+        }
+    }
+
+    /**
+     * Configure eclipse functionality, called from the extension unless the
+     * disableEclipseAddon flag is set
+     */
+    static void configure(MixinExtension extension, Project project) {
+        def hasEclipseModel = project.extensions.findByName('eclipse')
+        if (!hasEclipseModel) {
+            project.logger.lifecycle 'MixinGradle is skipping eclipse integration, extension not found'
+            return
+        }
+
+        def hasEclipseAptPlugin = project.plugins.findPlugin('com.diffplug.eclipse.apt') != null
+
+        def settings = project.tasks.register('mixinEclipseJdtApt', EclipseJdtAptTask.class) {
+            inputs.files project.tasks.createSrgToMcp
+            inputs.files project.tasks.createMcpToSrg
+            description = 'Creates the Eclipse JDT APT settings file'
+            output = project.file('.settings/org.eclipse.jdt.apt.core.prefs')
+            mappingsIn = extension.mappings
+            hasDiffplug = hasEclipseAptPlugin
+        }
+
+        def factories = project.tasks.register('mixinEclipseFactorypath', EclipseFactoryPath.class) {
+            config = project.configurations.annotationProcessor
+            output = project.file('.factorypath')
+        }
+
+        if (!hasEclipseAptPlugin) {
+            // These tasks don't do any useful work unless the diffplug APT plugin is applied.
+            project.logger.lifecycle 'MixinGradle did not locate the diffplug APT plugin, skipping eclipse task configuration'
+            return
+        }
+        
+        project.tasks.eclipseJdtApt.dependsOn(settings)
+        project.tasks.eclipseFactorypath.dependsOn(factories)
+    }
+
 }

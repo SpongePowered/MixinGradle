@@ -407,7 +407,7 @@ public class MixinExtension {
         }
         
         if (!this.disableEclipseAddon) {
-            MixinEclipse.configureEclipse(this, this.project, this.projectType)
+            MixinEclipse.configure(this, this.project)
         }
         
         this.init(this.project, this.projectType)
