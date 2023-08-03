@@ -53,7 +53,7 @@ public class MixinEclipse {
             return
         }
 
-        def eclipseAptPlugin = project.plugins.findPlugin('com.diffplug.eclipse.apt')
+        def hasEclipseAptPlugin = project.plugins.findPlugin('com.diffplug.eclipse.apt') != null
 
         def settings = project.tasks.register('mixinEclipseJdtApt', EclipseJdtAptTask.class) {
             inputs.files project.tasks.createSrgToMcp
@@ -61,7 +61,7 @@ public class MixinEclipse {
             description = 'Creates the Eclipse JDT APT settings file'
             output = project.file('.settings/org.eclipse.jdt.apt.core.prefs')
             mappingsIn = extension.mappings
-            hasDiffplug = eclipseAptPlugin
+            hasDiffplug = hasEclipseAptPlugin
         }
 
         def factories = project.tasks.register('mixinEclipseFactorypath', EclipseFactoryPath.class) {
@@ -70,7 +70,7 @@ public class MixinEclipse {
         }
 
         // These tasks don't do any useful work unless the diffplug APT plugin is applied.
-        if (eclipseAptPlugin) {
+        if (hasEclipseAptPlugin) {
             project.tasks.eclipseJdtApt.dependsOn(settings)
             project.tasks.eclipseFactorypath.dependsOn(factories)
         }
