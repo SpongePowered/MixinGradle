@@ -1035,7 +1035,7 @@ public class MixinExtension {
             })
             if (projectType == 'patcher') { //Patcher's universal jar is built from a filtered jar, so our normal detection doesn't find it.
                 if ('universalJar' == jarTask.name) {
-                    project.logger.info "Contributing refmap ({}) to {} in {}", taskSpecificRefMap, jar.hasProperty('archiveFileName') ? jar.archiveFileName.get() : jar.archiveName, project
+                    project.logger.info "Contributing refmap ({}) to {} in {}", taskSpecificRefMap, jarTask.hasProperty('archiveFileName') ? jarTask.archiveFileName.get() : jarTask.archiveName, project
                     jarTask.getRefMaps().from(taskSpecificRefMap)
                     jarTask.from(taskSpecificRefMap)
                 }
