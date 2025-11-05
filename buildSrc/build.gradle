@@ -1,0 +1,16 @@
+plugins {
+    id 'java'
+    alias libs.plugins.licenser
+}
+
+java.toolchain.languageVersion = JavaLanguageVersion.of(17)
+
+license {
+    ext {
+        name = 'MixinGradle'
+        organization = 'SpongePowered'
+        url = 'https://www.spongepowered.org'
+    }
+
+    header = rootProject.file('../HEADER.txt')
+}
